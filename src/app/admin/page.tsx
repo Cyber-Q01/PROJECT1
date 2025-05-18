@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
