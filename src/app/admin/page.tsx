@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote, ArrowUpDown, CalendarDays } from "lucide-react";
+import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote, ArrowUpDown, CalendarDays, Filter } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,6 +33,12 @@ const programFilters = [
   { id: "waec", label: "WAEC/SSCE" },
   { id: "post_utme", label: "Post-UTME" },
   { id: "jss", label: "JSS" },
+];
+
+const paymentAmountFilters = [
+  { id: "all", label: "All Payment Amounts" },
+  { id: "half_plus", label: "Half Payment (₦4000+)" },
+  { id: "full_8000", label: "Full Payment (₦8000)" },
 ];
 
 interface Student {
@@ -70,6 +76,7 @@ export default function AdminPage() {
   
   const [filterClassTiming, setFilterClassTiming] = useState<string>('all'); 
   const [filterProgram, setFilterProgram] = useState<string>('all'); 
+  const [filterPaymentRange, setFilterPaymentRange] = useState<string>('all');
 
   useEffect(() => {
     setIsClient(true);
@@ -180,7 +187,14 @@ export default function AdminPage() {
       sortableStudents = sortableStudents.filter(student => student.classTiming === filterClassTiming);
     }
     if (filterProgram !== 'all') {
-      sortableStudents = sortableStudents.filter(student => student.selectedSubjects.includes(filterProgram));
+      sortableStudents = sortableStudents.filter(student => student.selectedSubjects.some(subject => subject.toLowerCase() === filterProgram.toLowerCase()));
+    }
+    if (filterPaymentRange !== 'all') {
+      if (filterPaymentRange === 'half_plus') {
+        sortableStudents = sortableStudents.filter(student => student.amountDue >= 4000);
+      } else if (filterPaymentRange === 'full_8000') {
+        sortableStudents = sortableStudents.filter(student => student.amountDue === 8000);
+      }
     }
 
     if (sortConfig.key !== null) {
@@ -203,7 +217,7 @@ export default function AdminPage() {
       });
     }
     return sortableStudents;
-  }, [allStudents, sortConfig, filterClassTiming, filterProgram]);
+  }, [allStudents, sortConfig, filterClassTiming, filterProgram, filterPaymentRange]);
 
 
   if (!isClient) {
@@ -293,13 +307,13 @@ export default function AdminPage() {
               </TabsList>
               
               <TabsContent value="roster">
-                <CardDescription className="mb-4">Comprehensive list of all registered students. Click headers to sort.</CardDescription>
+                <CardDescription className="mb-4">Comprehensive list of all registered students. Click headers to sort. Use filters for refined views.</CardDescription>
                 
-                <div className="flex flex-wrap gap-4 mb-6 items-center">
-                  <div className="flex items-center gap-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6 items-end">
+                  <div className="flex flex-col gap-1.5">
                     <Label htmlFor="filterClassTiming" className="text-sm">Class Timing:</Label>
                     <Select value={filterClassTiming} onValueChange={setFilterClassTiming}>
-                      <SelectTrigger id="filterClassTiming" className="w-[180px]">
+                      <SelectTrigger id="filterClassTiming">
                         <SelectValue placeholder="Filter by class timing" />
                       </SelectTrigger>
                       <SelectContent>
@@ -309,10 +323,10 @@ export default function AdminPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-1.5">
                     <Label htmlFor="filterProgram" className="text-sm">Program:</Label>
                     <Select value={filterProgram} onValueChange={setFilterProgram}>
-                      <SelectTrigger id="filterProgram" className="w-[200px]">
+                      <SelectTrigger id="filterProgram">
                         <SelectValue placeholder="Filter by program" />
                       </SelectTrigger>
                       <SelectContent>
@@ -322,7 +336,24 @@ export default function AdminPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                   <Button variant="outline" size="sm" onClick={() => { setFilterClassTiming('all'); setFilterProgram('all'); setSortConfig({ key: 'registrationDate', direction: 'descending' }); }}>Reset Filters/Sort</Button>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="filterPaymentRange" className="text-sm">Payment Amount:</Label>
+                    <Select value={filterPaymentRange} onValueChange={setFilterPaymentRange}>
+                      <SelectTrigger id="filterPaymentRange">
+                        <SelectValue placeholder="Filter by payment amount" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentAmountFilters.map(filter => (
+                          <SelectItem key={filter.id} value={filter.id}>{filter.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="md:col-span-2 lg:col-span-3 flex justify-start">
+                     <Button variant="outline" size="sm" onClick={() => { setFilterClassTiming('all'); setFilterProgram('all'); setFilterPaymentRange('all'); setSortConfig({ key: 'registrationDate', direction: 'descending' }); }}>
+                       <Filter className="mr-2 h-3 w-3" /> Reset Filters & Sort
+                     </Button>
+                  </div>
                 </div>
 
                 {isLoading ? (
@@ -493,5 +524,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    
