@@ -1,6 +1,6 @@
 
 "use client"; 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, FormEvent, useMemo } from 'react';
 import PageHeader from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote, ArrowUpDown, CalendarDays, Tag } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,6 +25,16 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import Image from 'next/image';
+import { format } from 'date-fns';
+
+// Mirrors subjectsOffered in register page for filtering
+const programFilters = [
+  { id: "all", label: "All Programs" },
+  { id: "jamb", label: "JAMB" },
+  { id: "waec", label: "WAEC/SSCE" },
+  { id: "post_utme", label: "Post-UTME" },
+  { id: "jss", label: "JSS" },
+];
 
 interface Student {
   id: string;
@@ -31,17 +42,22 @@ interface Student {
   email: string;
   phone: string;
   address: string;
-  selectedSubjects: string[];
+  selectedSubjects: string[]; // Array of program IDs like "jamb", "waec"
   classTiming: 'morning' | 'afternoon';
+  registrationDate: Date; 
+  amountDue: number;
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
+type SortKey = keyof Student | null;
+type SortDirection = 'ascending' | 'descending';
+
 const ADMIN_USERNAME = "folorunshoa08@gmail.com";
-const ADMIN_PASSWORD = "Adekunle"; // In a real app, this would be hashed and checked on a server.
+const ADMIN_PASSWORD = "Adekunle"; 
 
 export default function AdminPage() {
-  const [students, setStudents] = useState<Student[]>([]);
+  const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
@@ -49,6 +65,13 @@ export default function AdminPage() {
   const [usernameInput, setUsernameInput] = useState('');
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
+
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'registrationDate', direction: 'descending' });
+  
+  // Filtering state
+  const [filterClassTiming, setFilterClassTiming] = useState<string>('all'); // 'all', 'morning', 'afternoon'
+  const [filterProgram, setFilterProgram] = useState<string>('all'); // 'all', or program ID
 
   useEffect(() => {
     setIsClient(true);
@@ -72,20 +95,22 @@ export default function AdminPage() {
           address: s.address || 'N/A',
           selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
           classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
+          registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0), // Handle potential undefined date
+          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
           paymentReceiptUrl: s.paymentReceiptUrl || null,
           paymentStatus: s.paymentStatus || 'pending_payment',
         }));
-        setStudents(loadedStudentsData);
+        setAllStudents(loadedStudentsData);
       } catch (error) {
         console.error("Error loading students from localStorage", error);
         toast({ title: "Error", description: "Could not load student data.", variant: "destructive" });
-        setStudents([]); 
+        setAllStudents([]); 
       } finally {
         setIsLoading(false);
       }
     }
   };
-
+  
   useEffect(() => {
     if (isAuthenticated && isClient) {
       loadStudents();
@@ -125,7 +150,8 @@ export default function AdminPage() {
         reg.id === studentId ? { ...reg, paymentStatus: status } : reg
       );
       localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
-      setStudents(prevStudents => prevStudents.map(s => s.id === studentId ? {...s, paymentStatus: status} : s)); 
+      // Update local state for immediate UI feedback
+      setAllStudents(prevStudents => prevStudents.map(s => s.id === studentId ? {...s, paymentStatus: status} : s)); 
       toast({
         title: "Payment Status Updated",
         description: `Student's payment marked as ${status}.`,
@@ -135,6 +161,55 @@ export default function AdminPage() {
       toast({ title: "Update Failed", description: "Could not update payment status.", variant: "destructive" });
     }
   };
+
+  const requestSort = (key: SortKey) => {
+    let direction: SortDirection = 'ascending';
+    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  const getSortIndicator = (key: SortKey) => {
+    if (sortConfig.key !== key) return <ArrowUpDown className="ml-2 h-3 w-3 opacity-50" />;
+    return sortConfig.direction === 'ascending' ? ' ▲' : ' ▼';
+  };
+
+  const filteredAndSortedStudents = useMemo(() => {
+    let sortableStudents = [...allStudents];
+
+    // Filtering
+    if (filterClassTiming !== 'all') {
+      sortableStudents = sortableStudents.filter(student => student.classTiming === filterClassTiming);
+    }
+    if (filterProgram !== 'all') {
+      sortableStudents = sortableStudents.filter(student => student.selectedSubjects.includes(filterProgram));
+    }
+
+    // Sorting
+    if (sortConfig.key !== null) {
+      sortableStudents.sort((a, b) => {
+        const valA = a[sortConfig.key!];
+        const valB = b[sortConfig.key!];
+
+        let comparison = 0;
+        if (valA instanceof Date && valB instanceof Date) {
+          comparison = valA.getTime() - valB.getTime();
+        } else if (typeof valA === 'number' && typeof valB === 'number') {
+          comparison = valA - valB;
+        } else if (typeof valA === 'string' && typeof valB === 'string') {
+          comparison = valA.localeCompare(valB);
+        } else if (Array.isArray(valA) && Array.isArray(valB)) { // For selectedSubjects
+            comparison = valA.join(',').localeCompare(valB.join(','));
+        }
+
+
+        return sortConfig.direction === 'ascending' ? comparison : -comparison;
+      });
+    }
+    return sortableStudents;
+  }, [allStudents, sortConfig, filterClassTiming, filterProgram]);
+
 
   if (!isClient) {
      return (
@@ -196,7 +271,7 @@ export default function AdminPage() {
     );
   }
 
-  const studentsForVerification = students.filter(s => s.paymentStatus !== 'pending_payment');
+  const studentsForVerification = filteredAndSortedStudents.filter(s => s.paymentStatus !== 'pending_payment');
 
   return (
     <div>
@@ -217,41 +292,76 @@ export default function AdminPage() {
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="roster" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 md:w-1/2 mb-6">
+              <TabsList className="grid w-full grid-cols-2 md:grid-cols-2 mb-6">
                 <TabsTrigger value="roster"><ListChecks className="mr-2 h-4 w-4" />Student Roster</TabsTrigger>
                 <TabsTrigger value="verification"><Banknote className="mr-2 h-4 w-4" />Payment Verification</TabsTrigger>
               </TabsList>
               
               <TabsContent value="roster">
-                <CardDescription className="mb-4">Comprehensive list of all registered students.</CardDescription>
+                <CardDescription className="mb-4">Comprehensive list of all registered students. Click headers to sort.</CardDescription>
+                
+                <div className="flex flex-wrap gap-4 mb-6 items-center">
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="filterClassTiming" className="text-sm">Class Timing:</Label>
+                    <Select value={filterClassTiming} onValueChange={setFilterClassTiming}>
+                      <SelectTrigger id="filterClassTiming" className="w-[180px]">
+                        <SelectValue placeholder="Filter by class timing" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Timings</SelectItem>
+                        <SelectItem value="morning">Morning</SelectItem>
+                        <SelectItem value="afternoon">Afternoon</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="filterProgram" className="text-sm">Program:</Label>
+                    <Select value={filterProgram} onValueChange={setFilterProgram}>
+                      <SelectTrigger id="filterProgram" className="w-[200px]">
+                        <SelectValue placeholder="Filter by program" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {programFilters.map(prog => (
+                          <SelectItem key={prog.id} value={prog.id}>{prog.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                   <Button variant="outline" size="sm" onClick={() => { setFilterClassTiming('all'); setFilterProgram('all'); setSortConfig({ key: 'registrationDate', direction: 'descending' }); }}>Reset Filters/Sort</Button>
+                </div>
+
                 {isLoading ? (
                   <p>Loading student data...</p>
-                ) : students.length === 0 ? (
+                ) : filteredAndSortedStudents.length === 0 ? (
                   <div className="text-center py-8">
                     <UserCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No student registrations found.</p>
+                    <p className="text-muted-foreground">No student registrations match your criteria.</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Full Name</TableHead>
-                          <TableHead>Email</TableHead>
-                          <TableHead>Phone</TableHead>
-                          <TableHead>Programs</TableHead>
-                          <TableHead>Class Timing</TableHead>
-                          <TableHead>Payment Status</TableHead>
+                          <TableHead onClick={() => requestSort('fullName')} className="cursor-pointer hover:bg-muted/50">Full Name {getSortIndicator('fullName')}</TableHead>
+                          <TableHead onClick={() => requestSort('email')} className="cursor-pointer hover:bg-muted/50">Email {getSortIndicator('email')}</TableHead>
+                          <TableHead onClick={() => requestSort('phone')} className="cursor-pointer hover:bg-muted/50">Phone {getSortIndicator('phone')}</TableHead>
+                          <TableHead onClick={() => requestSort('selectedSubjects')} className="cursor-pointer hover:bg-muted/50">Programs {getSortIndicator('selectedSubjects')}</TableHead>
+                          <TableHead onClick={() => requestSort('classTiming')} className="cursor-pointer hover:bg-muted/50">Class Timing {getSortIndicator('classTiming')}</TableHead>
+                          <TableHead onClick={() => requestSort('registrationDate')} className="cursor-pointer hover:bg-muted/50">Date Joined {getSortIndicator('registrationDate')}</TableHead>
+                          <TableHead onClick={() => requestSort('amountDue')} className="cursor-pointer hover:bg-muted/50">Amount Due {getSortIndicator('amountDue')}</TableHead>
+                          <TableHead onClick={() => requestSort('paymentStatus')} className="cursor-pointer hover:bg-muted/50">Payment Status {getSortIndicator('paymentStatus')}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {students.map((student) => (
+                        {filteredAndSortedStudents.map((student) => (
                           <TableRow key={student.id}>
                             <TableCell className="font-medium">{student.fullName}</TableCell>
                             <TableCell>{student.email}</TableCell>
                             <TableCell>{student.phone}</TableCell>
-                            <TableCell>{student.selectedSubjects.join(", ").toUpperCase()}</TableCell>
+                            <TableCell>{student.selectedSubjects.map(s => s.toUpperCase()).join(", ")}</TableCell>
                             <TableCell className="capitalize">{student.classTiming}</TableCell>
+                            <TableCell>{format(student.registrationDate, 'PPp')}</TableCell>
+                            <TableCell>₦{student.amountDue.toLocaleString()}</TableCell>
                             <TableCell>
                               <Badge 
                                 variant={
@@ -284,7 +394,7 @@ export default function AdminPage() {
                 ) : studentsForVerification.length === 0 ? (
                   <div className="text-center py-8">
                     <Banknote className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No payments are currently pending verification or processed.</p>
+                    <p className="text-muted-foreground">No payments are currently pending verification or processed based on current filters.</p>
                      <p className="text-sm text-muted-foreground mt-1">Payments awaiting verification will appear here.</p>
                   </div>
                 ) : (
@@ -294,6 +404,8 @@ export default function AdminPage() {
                         <TableRow>
                           <TableHead>Full Name</TableHead>
                           <TableHead>Email</TableHead>
+                          <TableHead>Date Registered</TableHead>
+                          <TableHead>Amount Due</TableHead>
                           <TableHead>Receipt</TableHead>
                           <TableHead>Payment Status</TableHead>
                           <TableHead>Actions</TableHead>
@@ -304,6 +416,8 @@ export default function AdminPage() {
                           <TableRow key={student.id}>
                             <TableCell className="font-medium">{student.fullName}</TableCell>
                             <TableCell>{student.email}</TableCell>
+                            <TableCell>{format(student.registrationDate, 'PP')}</TableCell>
+                            <TableCell>₦{student.amountDue.toLocaleString()}</TableCell>
                             <TableCell>
                               {student.paymentReceiptUrl ? (
                                 <AlertDialog>
@@ -383,3 +497,5 @@ export default function AdminPage() {
   );
 }
 
+
+    

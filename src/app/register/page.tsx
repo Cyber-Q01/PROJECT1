@@ -8,14 +8,15 @@ import * as z from "zod";
 import PageHeader from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea"; // Kept for potential future use, not in current schema
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, UploadCloud, AlertCircle } from "lucide-react";
+import { CheckCircle2, UploadCloud, AlertCircle, Banknote } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+const TUTORIAL_FEE = 8000;
 
 const subjectsOffered = [
   { id: "jamb", label: "JAMB Preparatory Classes" },
@@ -35,14 +36,14 @@ const registrationSchema = z.object({
 
 type RegistrationFormValues = z.infer<typeof registrationSchema>;
 
-// Interface for student data stored in localStorage
 interface StoredStudentData extends RegistrationFormValues {
   id: string;
+  registrationDate: string; // ISO string format
+  amountDue: number;
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
-// Helper to convert file to Base64
 const getBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -89,6 +90,8 @@ export default function RegisterPage() {
       const newRegistration: StoredStudentData = {
         ...data,
         id: `student-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        registrationDate: new Date().toISOString(),
+        amountDue: TUTORIAL_FEE,
         paymentStatus: 'pending_payment',
         paymentReceiptUrl: null,
       };
@@ -118,7 +121,7 @@ export default function RegisterPage() {
         });
         setReceiptFile(null);
         setReceiptPreview(null);
-        event.target.value = ""; // Clear the input
+        event.target.value = ""; 
         return;
       }
       setReceiptFile(file);
@@ -156,7 +159,7 @@ export default function RegisterPage() {
       setRegistrationStep('submitted');
       setReceiptFile(null);
       setReceiptPreview(null);
-      setCurrentRegistrant(null);
+      setCurrentRegistrant(null); // Clear current registrant after submission
       window.scrollTo(0, 0);
     } catch (error) {
       console.error("Failed to save payment proof to localStorage", error);
@@ -175,7 +178,7 @@ export default function RegisterPage() {
     setCurrentRegistrant(null);
     setReceiptFile(null);
     setReceiptPreview(null);
-    reset(); // Reset form fields
+    reset(); 
   }
 
   if (!isClient) {
@@ -201,22 +204,22 @@ export default function RegisterPage() {
               <CardDescription>Hi {currentRegistrant?.fullName}, please proceed with payment.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <Alert variant="default" className="bg-blue-50 border-blue-200">
-                <AlertCircle className="h-5 w-5 text-blue-600" />
-                <AlertTitle className="text-blue-700 font-semibold">Payment Instructions</AlertTitle>
-                <AlertDescription className="text-blue-600">
+               <Alert variant="default" className="bg-blue-50 border-blue-200">
+                <Banknote className="h-5 w-5 text-blue-600" />
+                <AlertTitle className="text-blue-700 font-semibold">Tutorial Fee: ₦{TUTORIAL_FEE.toLocaleString()}</AlertTitle>
+                <AlertDescription className="text-blue-600 mt-2">
                   Please make payment to the following account:
                   <ul className="list-disc list-inside mt-2 space-y-1">
                     <li><strong>Account Name:</strong> First Class Educational</li>
                     <li><strong>Account Number:</strong> 123456789</li>
                     <li><strong>Bank:</strong> Opay</li>
                   </ul>
-                   Ensure the narration includes your full name for easy identification.
+                   Ensure the narration includes your full name for easy identification. After payment, upload your receipt below.
                 </AlertDescription>
               </Alert>
 
               <div>
-                <Label htmlFor="receiptUpload" className="flex items-center gap-2 mb-2 cursor-pointer">
+                <Label htmlFor="receiptUpload" className="flex items-center gap-2 mb-2 cursor-pointer text-sm font-medium">
                   <UploadCloud className="h-5 w-5 text-accent" />
                   Upload Payment Receipt
                 </Label>
@@ -233,6 +236,7 @@ export default function RegisterPage() {
                     <img src={receiptPreview} alt="Receipt preview" className="max-w-xs max-h-48 rounded-md border object-contain" />
                   </div>
                 )}
+                 {!receiptFile && <p className="text-xs text-muted-foreground mt-1">Please select a receipt file (PNG, JPG, JPEG, max 2MB).</p>}
               </div>
               <Button 
                 onClick={handlePaymentProofSubmit} 
@@ -270,7 +274,6 @@ export default function RegisterPage() {
     );
   }
 
-  // registrationStep === 'form'
   return (
     <div>
       <PageHeader
@@ -281,7 +284,7 @@ export default function RegisterPage() {
         <Card className="max-w-2xl mx-auto shadow-xl">
           <CardHeader>
             <CardTitle className="text-xl text-primary">Step 1: Personal Information</CardTitle>
-            <CardDescription>Please provide accurate details.</CardDescription>
+            <CardDescription>Please provide accurate details. The tutorial fee is ₦{TUTORIAL_FEE.toLocaleString()}.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
@@ -316,7 +319,7 @@ export default function RegisterPage() {
                     <div key={subject.id} className="flex items-center space-x-2">
                       <Checkbox
                         id={subject.id}
-                        checked={selectedSubjectsWatch.includes(subject.id)}
+                        checked={(selectedSubjectsWatch || []).includes(subject.id)}
                         onCheckedChange={(checked) => {
                           const currentSubjects = selectedSubjectsWatch || [];
                           if (checked) {
@@ -363,3 +366,4 @@ export default function RegisterPage() {
   );
 }
 
+    
