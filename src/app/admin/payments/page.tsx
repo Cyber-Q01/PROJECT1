@@ -9,12 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ShieldAlert, ArrowLeft, CheckCircle, XCircle, Eye, Download } from "lucide-react";
+import { LogOut, ShieldAlert, ArrowLeft, CheckCircle, XCircle, Eye, Download as DownloadIcon } from "lucide-react"; // Renamed Download to DownloadIcon
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from 'date-fns';
 
 interface Student {
@@ -152,28 +153,84 @@ export default function PaymentManagementPage() {
         student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.phone.includes(searchTerm);
-      return matchesStatus && matchesSearchTerm && student.paymentReceiptUrl; // Only show students who have uploaded a receipt or are pending payment for this tab
-    }).sort((a,b) => new Date(b.registrationDate).getTime() - new Date(a.registrationDate).getTime()); // Default sort by newest
+      // For this tab, we primarily care about students with receipts or in verification/payment stages.
+      // If showing 'all' or 'pending_payment', include those without receipts yet.
+      // Otherwise, they must have a receipt.
+      const hasReceiptOrRelevantStatus = student.paymentReceiptUrl || 
+                                         filterPaymentStatus === "all" || 
+                                         filterPaymentStatus === "pending_payment" ||
+                                         student.paymentStatus === 'pending_verification';
+                                         
+      return matchesStatus && matchesSearchTerm && hasReceiptOrRelevantStatus;
+    }).sort((a,b) => new Date(b.registrationDate).getTime() - new Date(a.registrationDate).getTime());
   }, [allStudents, filterPaymentStatus, searchTerm]);
 
   const getPaymentStatusBadgeVariant = (status: Student['paymentStatus']) => {
     switch (status) {
-      case 'approved': return 'default'; // Green in default theme
-      case 'pending_verification': return 'secondary'; // Yellowish/Orange
-      case 'rejected': return 'destructive'; // Red
-      case 'pending_payment': return 'outline'; // Grey
+      case 'approved': return 'default'; 
+      case 'pending_verification': return 'secondary'; 
+      case 'rejected': return 'destructive'; 
+      case 'pending_payment': return 'outline'; 
       default: return 'outline';
     }
   };
   
-  const handleDownloadReceipt = (receiptUrl: string, studentName: string) => {
+  const handleDownloadReceiptImage = (receiptUrl: string, studentName: string) => {
     const link = document.createElement('a');
     link.href = receiptUrl;
-    link.download = `receipt_${studentName.replace(/\s+/g, '_')}.png`; // Assuming PNG, adjust if other types are common
+    // Guess extension or use a generic one. PNG is common for screenshots.
+    const extension = receiptUrl.split('.').pop()?.split(';')[0] || 'png';
+    link.download = `receipt_${studentName.replace(/\s+/g, '_')}.${extension}`; 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(link.href); // Clean up blob URL if it was one
     toast({ title: "Receipt Downloaded", description: `Receipt for ${studentName} started downloading.` });
+  };
+
+  const handleDownloadCSVPayments = () => {
+    if (filteredStudentsForPayment.length === 0) {
+      toast({ title: "No Data", description: "No payment data to download with current filters.", variant: "default" });
+      return;
+    }
+
+    const headers = [
+      'Student Name', 'Email', 'Program(s)', 'Amount Paid (₦)', 
+      'Date Registered', 'Payment Status'
+    ];
+    const csvRows = [headers.join(',')];
+
+    filteredStudentsForPayment.forEach(student => {
+      const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s)?.label || s).join('; ');
+      const paymentStatusText = student.paymentStatus.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      
+      const row = [
+        `"${student.fullName}"`,
+        `"${student.email}"`,
+        `"${programs}"`,
+        student.amountDue.toString(),
+        student.registrationDate ? `"${format(student.registrationDate, 'yyyy-MM-dd HH:mm')}"` : 'N/A',
+        `"${paymentStatusText}"`,
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", "student_payments.csv");
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast({ title: "Download Started", description: "Student payments CSV is being downloaded." });
+    } else {
+      toast({ title: "Download Failed", description: "Your browser does not support this feature.", variant: "destructive" });
+    }
   };
 
 
@@ -244,7 +301,10 @@ export default function PaymentManagementPage() {
                             className="mt-1 w-full"
                         />
                     </div>
-                     <div className="col-span-full flex justify-end mt-2">
+                     <div className="col-span-full flex justify-between items-center mt-2">
+                       <Button variant="outline" onClick={handleDownloadCSVPayments} className="text-sm">
+                         <DownloadIcon className="mr-2 h-4 w-4" /> Download CSV
+                       </Button>
                        <Button variant="ghost" onClick={() => {setFilterPaymentStatus("all"); setSearchTerm("");}} className="text-sm">
                         <XCircle className="mr-2 h-4 w-4" /> Reset Filters
                       </Button>
@@ -298,8 +358,8 @@ export default function PaymentManagementPage() {
                                   <Image src={student.paymentReceiptUrl} alt={`Receipt for ${student.fullName}`} width={500} height={700} className="rounded-md object-contain max-h-[70vh] w-auto mx-auto" />
                                 </div>
                                 <div className="flex justify-end gap-2">
-                                   <Button variant="outline" onClick={() => handleDownloadReceipt(student.paymentReceiptUrl!, student.fullName)}>
-                                        <Download className="mr-2 h-4 w-4" /> Download
+                                   <Button variant="outline" onClick={() => handleDownloadReceiptImage(student.paymentReceiptUrl!, student.fullName)}>
+                                        <DownloadIcon className="mr-2 h-4 w-4" /> Download Image
                                     </Button>
                                   <DialogClose asChild><Button variant="secondary">Close</Button></DialogClose>
                                 </div>
@@ -343,7 +403,7 @@ export default function PaymentManagementPage() {
   );
 }
 
-// Helper function to get tailwind class names (cn)
+// Helper function to get tailwind class names (cn) - Not used in this component
 function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(' ');
 }

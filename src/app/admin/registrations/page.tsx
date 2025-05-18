@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ShieldAlert, ArrowLeft, ArrowUpDown, Filter, XCircle } from "lucide-react";
+import { LogOut, ShieldAlert, ArrowLeft, ArrowUpDown, Filter, XCircle, Download } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -26,7 +26,7 @@ interface Student {
   selectedSubjects: string[];
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date;
-  amountDue: number; // This will store the amount paid by student
+  amountDue: number; 
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
@@ -215,6 +215,57 @@ export default function RegistrationManagementPage() {
     setSortConfig({ key: 'registrationDate', direction: 'descending' });
   };
 
+  const handleDownloadCSVRegistrations = () => {
+    if (filteredAndSortedStudents.length === 0) {
+      toast({ title: "No Data", description: "No data to download with current filters.", variant: "default" });
+      return;
+    }
+
+    const headers = [
+      'Full Name', 'Email', 'Phone', 'Date of Birth', 'Program(s)', 
+      'Class Timing', 'Amount Paid (₦)', 'Payment Status', 'Date Joined'
+    ];
+
+    const csvRows = [headers.join(',')];
+
+    filteredAndSortedStudents.forEach(student => {
+      const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s)?.label || s).join('; ');
+      const paymentStatusText = student.paymentStatus.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const classTimingText = student.classTiming.charAt(0).toUpperCase() + student.classTiming.slice(1);
+      
+      const row = [
+        `"${student.fullName}"`,
+        `"${student.email}"`,
+        `"${student.phone}"`,
+        student.dateOfBirth ? `"${format(student.dateOfBirth, 'yyyy-MM-dd')}"` : 'N/A',
+        `"${programs}"`,
+        `"${classTimingText}"`,
+        student.amountDue.toString(),
+        `"${paymentStatusText}"`,
+        student.registrationDate ? `"${format(student.registrationDate, 'yyyy-MM-dd HH:mm')}"` : 'N/A',
+      ];
+      csvRows.push(row.join(','));
+    });
+
+    const csvString = csvRows.join('\n');
+    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    if (link.download !== undefined) {
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", "student_registrations.csv");
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast({ title: "Download Started", description: "Student registrations CSV is being downloaded." });
+    } else {
+      toast({ title: "Download Failed", description: "Your browser does not support this feature.", variant: "destructive" });
+    }
+  };
+
+
   if (!isClient) {
     return (
       <div>
@@ -247,10 +298,10 @@ export default function RegistrationManagementPage() {
   
   const getPaymentStatusBadgeVariant = (status: Student['paymentStatus']) => {
     switch (status) {
-      case 'approved': return 'default'; // Green in default theme
-      case 'pending_verification': return 'secondary'; // Yellowish/Orange
-      case 'rejected': return 'destructive'; // Red
-      case 'pending_payment': return 'outline'; // Grey
+      case 'approved': return 'default'; 
+      case 'pending_verification': return 'secondary'; 
+      case 'rejected': return 'destructive'; 
+      case 'pending_payment': return 'outline'; 
       default: return 'outline';
     }
   };
@@ -307,7 +358,10 @@ export default function RegistrationManagementPage() {
                         className="mt-1 w-full"
                     />
                 </div>
-                <div className="col-span-full flex justify-end mt-2">
+                <div className="col-span-full flex justify-between items-center mt-2">
+                   <Button variant="outline" onClick={handleDownloadCSVRegistrations} className="text-sm">
+                    <Download className="mr-2 h-4 w-4" /> Download CSV
+                  </Button>
                    <Button variant="ghost" onClick={resetFiltersAndSort} className="text-sm">
                     <XCircle className="mr-2 h-4 w-4" /> Reset Filters & Sort
                   </Button>
@@ -373,7 +427,8 @@ export default function RegistrationManagementPage() {
   );
 }
 
-// Helper function to get tailwind class names (cn)
+// Helper function to get tailwind class names (cn) - Not used in this component, but good practice to keep if other parts need it.
 function cn(...classes: (string | undefined | null | false)[]): string {
   return classes.filter(Boolean).join(' ');
 }
+
