@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -51,9 +52,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     setIsClient(true);
-    // Check if already authenticated from a previous session (very basic)
-    if (sessionStorage.getItem("isAdminAuthenticated") === "true") {
-      setIsAuthenticated(true);
+    if (typeof window !== "undefined") {
+        if (sessionStorage.getItem("isAdminAuthenticated") === "true") {
+            setIsAuthenticated(true);
+        }
     }
   }, []);
 
@@ -94,7 +96,9 @@ export default function AdminPage() {
     event.preventDefault();
     if (usernameInput === ADMIN_USERNAME && passwordInput === ADMIN_PASSWORD) {
       setIsAuthenticated(true);
-      sessionStorage.setItem("isAdminAuthenticated", "true"); // Basic session persistence
+      if (isClient) {
+        sessionStorage.setItem("isAdminAuthenticated", "true"); 
+      }
       setLoginError('');
       toast({ title: "Login Successful", description: "Welcome, Admin!" });
     } else {
@@ -105,7 +109,9 @@ export default function AdminPage() {
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-    sessionStorage.removeItem("isAdminAuthenticated");
+    if (isClient) {
+      sessionStorage.removeItem("isAdminAuthenticated");
+    }
     setUsernameInput('');
     setPasswordInput('');
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
@@ -119,10 +125,10 @@ export default function AdminPage() {
         reg.id === studentId ? { ...reg, paymentStatus: status } : reg
       );
       localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
-      setStudents(prevStudents => prevStudents.map(s => s.id === studentId ? {...s, paymentStatus: status} : s)); // Update local state immediately
+      setStudents(prevStudents => prevStudents.map(s => s.id === studentId ? {...s, paymentStatus: status} : s)); 
       toast({
         title: "Payment Status Updated",
-        description: `Student ${studentId}'s payment marked as ${status}.`,
+        description: `Student's payment marked as ${status}.`,
       });
     } catch (error) {
       console.error("Error updating payment status in localStorage", error);
@@ -190,7 +196,8 @@ export default function AdminPage() {
     );
   }
 
-  // Authenticated View
+  const studentsForVerification = students.filter(s => s.paymentStatus !== 'pending_payment');
+
   return (
     <div>
       <PageHeader
@@ -201,124 +208,178 @@ export default function AdminPage() {
         <Card className="shadow-xl">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle className="text-xl text-primary">Student Management</CardTitle>
-              <CardDescription>Overview of registered students and their payment status.</CardDescription>
+              <CardTitle className="text-xl text-primary">Student Administration</CardTitle>
+              <CardDescription>Oversee student records and manage payment verifications.</CardDescription>
             </div>
             <Button variant="outline" onClick={handleLogout}>
               <LogOut className="mr-2 h-4 w-4" /> Logout
             </Button>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
-              <p>Loading student data...</p>
-            ) : students.length === 0 ? (
-              <div className="text-center py-8">
-                <UserCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No student registrations found.</p>
-                <p className="text-sm text-muted-foreground mt-1">New registrations will appear here.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Full Name</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Phone</TableHead>
-                      <TableHead>Programs</TableHead>
-                      <TableHead>Class Timing</TableHead>
-                      <TableHead>Receipt</TableHead>
-                      <TableHead>Payment Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {students.map((student) => (
-                      <TableRow key={student.id}>
-                        <TableCell className="font-medium">{student.fullName}</TableCell>
-                        <TableCell>{student.email}</TableCell>
-                        <TableCell>{student.phone}</TableCell>
-                        <TableCell>{student.selectedSubjects.join(", ").toUpperCase()}</TableCell>
-                        <TableCell className="capitalize">{student.classTiming}</TableCell>
-                        <TableCell>
-                          {student.paymentReceiptUrl ? (
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="outline" size="sm"><Eye className="mr-1 h-3 w-3" /> View</Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Payment Receipt for {student.fullName}</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    <Image src={student.paymentReceiptUrl} alt={`Receipt for ${student.fullName}`} width={400} height={600} className="rounded-md mt-2 object-contain max-h-[70vh]" />
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Close</AlertDialogCancel>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">N/A</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge 
-                            variant={
-                              student.paymentStatus === 'approved' ? 'default' :
-                              student.paymentStatus === 'rejected' ? 'destructive' :
-                              student.paymentStatus === 'pending_verification' ? 'secondary' :
-                              'outline' // pending_payment
-                            }
-                            className="capitalize whitespace-nowrap"
-                          >
-                            {student.paymentStatus === 'approved' && <CheckCircle className="mr-1 h-3 w-3" />}
-                            {student.paymentStatus === 'rejected' && <XCircle className="mr-1 h-3 w-3" />}
-                            {student.paymentStatus === 'pending_verification' && <Clock className="mr-1 h-3 w-3" />}
-                            {student.paymentStatus === 'pending_payment' && <BadgeDollarSign className="mr-1 h-3 w-3" />}
-                            {student.paymentStatus.replace('_', ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="space-x-1 whitespace-nowrap">
-                          {student.paymentStatus === 'pending_verification' && (
-                            <>
-                              <Button 
-                                size="sm" 
-                                variant="default"
-                                className="bg-green-600 hover:bg-green-700 text-white"
-                                onClick={() => updateStudentPaymentStatus(student.id, 'approved')}
+            <Tabs defaultValue="roster" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 md:w-1/2 mb-6">
+                <TabsTrigger value="roster"><ListChecks className="mr-2 h-4 w-4" />Student Roster</TabsTrigger>
+                <TabsTrigger value="verification"><Banknote className="mr-2 h-4 w-4" />Payment Verification</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="roster">
+                <CardDescription className="mb-4">Comprehensive list of all registered students.</CardDescription>
+                {isLoading ? (
+                  <p>Loading student data...</p>
+                ) : students.length === 0 ? (
+                  <div className="text-center py-8">
+                    <UserCircle2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No student registrations found.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Full Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Phone</TableHead>
+                          <TableHead>Programs</TableHead>
+                          <TableHead>Class Timing</TableHead>
+                          <TableHead>Payment Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {students.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell className="font-medium">{student.fullName}</TableCell>
+                            <TableCell>{student.email}</TableCell>
+                            <TableCell>{student.phone}</TableCell>
+                            <TableCell>{student.selectedSubjects.join(", ").toUpperCase()}</TableCell>
+                            <TableCell className="capitalize">{student.classTiming}</TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant={
+                                  student.paymentStatus === 'approved' ? 'default' :
+                                  student.paymentStatus === 'rejected' ? 'destructive' :
+                                  student.paymentStatus === 'pending_verification' ? 'secondary' :
+                                  'outline'
+                                }
+                                className="capitalize whitespace-nowrap"
                               >
-                                <ThumbsUp className="mr-1 h-3 w-3" /> Approve
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="destructive"
-                                onClick={() => updateStudentPaymentStatus(student.id, 'rejected')}
+                                {student.paymentStatus === 'approved' && <CheckCircle className="mr-1 h-3 w-3" />}
+                                {student.paymentStatus === 'rejected' && <XCircle className="mr-1 h-3 w-3" />}
+                                {student.paymentStatus === 'pending_verification' && <Clock className="mr-1 h-3 w-3" />}
+                                {student.paymentStatus === 'pending_payment' && <BadgeDollarSign className="mr-1 h-3 w-3" />}
+                                {student.paymentStatus.replace('_', ' ')}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="verification">
+                <CardDescription className="mb-4">Review and manage student payment submissions.</CardDescription>
+                {isLoading ? (
+                  <p>Loading payment data...</p>
+                ) : studentsForVerification.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Banknote className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">No payments are currently pending verification or processed.</p>
+                     <p className="text-sm text-muted-foreground mt-1">Payments awaiting verification will appear here.</p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Full Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Receipt</TableHead>
+                          <TableHead>Payment Status</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {studentsForVerification.map((student) => (
+                          <TableRow key={student.id}>
+                            <TableCell className="font-medium">{student.fullName}</TableCell>
+                            <TableCell>{student.email}</TableCell>
+                            <TableCell>
+                              {student.paymentReceiptUrl ? (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="outline" size="sm"><Eye className="mr-1 h-3 w-3" /> View</Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Payment Receipt: {student.fullName}</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        <Image src={student.paymentReceiptUrl} alt={`Receipt for ${student.fullName}`} width={400} height={600} className="rounded-md mt-2 object-contain max-h-[70vh]" />
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Close</AlertDialogCancel>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              ) : (
+                                <span className="text-muted-foreground text-xs">N/A</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Badge 
+                                variant={
+                                  student.paymentStatus === 'approved' ? 'default' :
+                                  student.paymentStatus === 'rejected' ? 'destructive' :
+                                  student.paymentStatus === 'pending_verification' ? 'secondary' :
+                                  'outline'
+                                }
+                                className="capitalize whitespace-nowrap"
                               >
-                                 <ThumbsDown className="mr-1 h-3 w-3" /> Reject
-                              </Button>
-                            </>
-                          )}
-                          {(student.paymentStatus === 'approved' || student.paymentStatus === 'rejected') && (
-                             <span className="text-xs text-muted-foreground italic">
-                              Verified
-                             </span>
-                          )}
-                           {student.paymentStatus === 'pending_payment' && (
-                             <span className="text-xs text-muted-foreground italic">
-                              Awaiting Proof
-                             </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+                                {student.paymentStatus === 'approved' && <CheckCircle className="mr-1 h-3 w-3" />}
+                                {student.paymentStatus === 'rejected' && <XCircle className="mr-1 h-3 w-3" />}
+                                {student.paymentStatus === 'pending_verification' && <Clock className="mr-1 h-3 w-3" />}
+                                {student.paymentStatus.replace('_', ' ')}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="space-x-1 whitespace-nowrap">
+                              {student.paymentStatus === 'pending_verification' && (
+                                <>
+                                  <Button 
+                                    size="sm" 
+                                    variant="default"
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                    onClick={() => updateStudentPaymentStatus(student.id, 'approved')}
+                                  >
+                                    <ThumbsUp className="mr-1 h-3 w-3" /> Approve
+                                  </Button>
+                                  <Button 
+                                    size="sm" 
+                                    variant="destructive"
+                                    onClick={() => updateStudentPaymentStatus(student.id, 'rejected')}
+                                  >
+                                     <ThumbsDown className="mr-1 h-3 w-3" /> Reject
+                                  </Button>
+                                </>
+                              )}
+                              {(student.paymentStatus === 'approved' || student.paymentStatus === 'rejected') && (
+                                 <span className="text-xs text-muted-foreground italic">
+                                  Actioned
+                                 </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
       </section>
     </div>
   );
 }
+
