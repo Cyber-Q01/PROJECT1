@@ -37,7 +37,8 @@ const programFilters = [
 
 const paymentAmountFilters = [
   { id: "all", label: "All Payment Amounts" },
-  { id: "half_plus", label: "Half Payment (₦4000+)" },
+  { id: "less_than_4000", label: "Less than ₦4000" },
+  { id: "half_plus", label: "₦4000 - ₦7999" },
   { id: "full_8000", label: "Full Payment (₦8000)" },
 ];
 
@@ -51,7 +52,7 @@ interface Student {
   selectedSubjects: string[]; 
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date; 
-  amountDue: number; // Amount student inputted as paid
+  amountDue: number; 
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
@@ -190,8 +191,10 @@ export default function AdminPage() {
       sortableStudents = sortableStudents.filter(student => student.selectedSubjects.some(subject => subject.toLowerCase() === filterProgram.toLowerCase()));
     }
     if (filterPaymentRange !== 'all') {
-      if (filterPaymentRange === 'half_plus') {
-        sortableStudents = sortableStudents.filter(student => student.amountDue >= 4000);
+      if (filterPaymentRange === 'less_than_4000') {
+        sortableStudents = sortableStudents.filter(student => student.amountDue < 4000);
+      } else if (filterPaymentRange === 'half_plus') {
+        sortableStudents = sortableStudents.filter(student => student.amountDue >= 4000 && student.amountDue < 8000);
       } else if (filterPaymentRange === 'full_8000') {
         sortableStudents = sortableStudents.filter(student => student.amountDue === 8000);
       }
@@ -524,3 +527,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    
