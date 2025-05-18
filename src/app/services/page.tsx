@@ -3,7 +3,7 @@ import PageHeader from "@/components/shared/PageHeader";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { CheckCircle, Clock, Users, BookOpen } from "lucide-react";
+import { CheckCircle, Clock, Users, BookOpen, Briefcase } from "lucide-react";
 
 const services = [
   {
@@ -46,17 +46,17 @@ const services = [
     icon: <Users className="h-10 w-10 text-primary mb-4" />,
   },
   {
-    title: "Junior Secondary (JSS) & Basic Education",
-    description: "Solid foundation building for JSS students in core subjects, preparing them for BECE and senior secondary education.",
-    subjects: ["Mathematics", "English Studies", "Basic Science & Technology", "Pre-Vocational Studies", "National Values Education"],
-    schedule: "Weekdays: 2 PM - 4 PM",
+    title: "Educational Consultancy",
+    description: "Expert guidance for students and parents on academic pathways, university selection, scholarship applications, and career counseling.",
+    subjects: ["Career Counseling", "University Admission Guidance", "Scholarship Application Support", "Study Skills Development"],
+    schedule: "By Appointment Only",
     gains: [
-      "Strong grasp of fundamental concepts",
-      "Improved academic performance in school",
-      "Preparation for Basic Education Certificate Examination (BECE)",
-      "Development of critical thinking skills",
+      "Personalized academic and career roadmap",
+      "Improved chances of securing admission and scholarships",
+      "Clarity on educational and career goals",
+      "Access to up-to-date information on educational trends",
     ],
-    icon: <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary mb-4"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>,
+    icon: <Briefcase className="h-10 w-10 text-primary mb-4" />,
   },
 ];
 
@@ -81,7 +81,7 @@ export default function ServicesPage() {
               </CardHeader>
               <CardContent className="flex-grow space-y-4">
                 <div>
-                  <h4 className="font-semibold text-md mb-1">Subjects Offered:</h4>
+                  <h4 className="font-semibold text-md mb-1">Focus Areas/Subjects:</h4>
                   <p className="text-sm text-muted-foreground">{service.subjects.join(", ")}</p>
                 </div>
                 <div>
@@ -131,4 +131,3 @@ export default function ServicesPage() {
     </div>
   );
 }
-

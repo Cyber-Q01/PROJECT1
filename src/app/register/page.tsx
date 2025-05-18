@@ -24,7 +24,7 @@ const subjectsOffered = [
   { id: "jamb", label: "JAMB Preparatory Classes" },
   { id: "waec", label: "WAEC/SSCE Tutoring" },
   { id: "post_utme", label: "Post-UTME Screening Prep" },
-  { id: "jss", label: "Junior Secondary (JSS)" },
+  { id: "edu_consult", label: "Educational Consultancy" },
 ];
 
 const registrationSchema = z.object({
@@ -448,5 +448,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
-    

@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote, ArrowUpDown, CalendarDays, Filter } from "lucide-react";
+import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote, ArrowUpDown, CalendarDays, Filter, Briefcase } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -32,7 +32,7 @@ const programFilters = [
   { id: "jamb", label: "JAMB" },
   { id: "waec", label: "WAEC/SSCE" },
   { id: "post_utme", label: "Post-UTME" },
-  { id: "jss", label: "JSS" },
+  { id: "edu_consult", label: "Edu Consult" },
 ];
 
 const paymentAmountFilters = [
@@ -188,7 +188,9 @@ export default function AdminPage() {
       sortableStudents = sortableStudents.filter(student => student.classTiming === filterClassTiming);
     }
     if (filterProgram !== 'all') {
-      sortableStudents = sortableStudents.filter(student => student.selectedSubjects.some(subject => subject.toLowerCase() === filterProgram.toLowerCase()));
+      sortableStudents = sortableStudents.filter(student => 
+        student.selectedSubjects.some(subjectId => subjectId.toLowerCase() === filterProgram.toLowerCase())
+      );
     }
     if (filterPaymentRange !== 'all') {
       if (filterPaymentRange === 'less_than_4000') {
@@ -389,7 +391,10 @@ export default function AdminPage() {
                             <TableCell>{student.email}</TableCell>
                             <TableCell>{student.phone}</TableCell>
                             <TableCell>{format(student.dateOfBirth, 'PP')}</TableCell>
-                            <TableCell>{student.selectedSubjects.map(s => s.toUpperCase()).join(", ")}</TableCell>
+                            <TableCell>{student.selectedSubjects.map(s => {
+                              const prog = programFilters.find(p => p.id === s);
+                              return prog ? prog.label : s.toUpperCase();
+                            }).join(", ")}</TableCell>
                             <TableCell className="capitalize">{student.classTiming}</TableCell>
                             <TableCell>{format(student.registrationDate, 'PPp')}</TableCell>
                             <TableCell>₦{student.amountDue.toLocaleString()}</TableCell>
@@ -527,5 +532,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-    
