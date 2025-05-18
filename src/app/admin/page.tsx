@@ -45,7 +45,7 @@ interface Student {
   selectedSubjects: string[]; // Array of program IDs like "jamb", "waec"
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date; 
-  amountDue: number;
+  amountDue: number; // This now reflects the amount the student inputted as paid
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
@@ -95,8 +95,8 @@ export default function AdminPage() {
           address: s.address || 'N/A',
           selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
           classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
-          registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0), // Handle potential undefined date
-          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
+          registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
+          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, // Amount student claims to have paid
           paymentReceiptUrl: s.paymentReceiptUrl || null,
           paymentStatus: s.paymentStatus || 'pending_payment',
         }));
@@ -199,10 +199,9 @@ export default function AdminPage() {
           comparison = valA - valB;
         } else if (typeof valA === 'string' && typeof valB === 'string') {
           comparison = valA.localeCompare(valB);
-        } else if (Array.isArray(valA) && Array.isArray(valB)) { // For selectedSubjects
+        } else if (Array.isArray(valA) && Array.isArray(valB)) { 
             comparison = valA.join(',').localeCompare(valB.join(','));
         }
-
 
         return sortConfig.direction === 'ascending' ? comparison : -comparison;
       });
@@ -348,7 +347,7 @@ export default function AdminPage() {
                           <TableHead onClick={() => requestSort('selectedSubjects')} className="cursor-pointer hover:bg-muted/50">Programs {getSortIndicator('selectedSubjects')}</TableHead>
                           <TableHead onClick={() => requestSort('classTiming')} className="cursor-pointer hover:bg-muted/50">Class Timing {getSortIndicator('classTiming')}</TableHead>
                           <TableHead onClick={() => requestSort('registrationDate')} className="cursor-pointer hover:bg-muted/50">Date Joined {getSortIndicator('registrationDate')}</TableHead>
-                          <TableHead onClick={() => requestSort('amountDue')} className="cursor-pointer hover:bg-muted/50">Amount Due {getSortIndicator('amountDue')}</TableHead>
+                          <TableHead onClick={() => requestSort('amountDue')} className="cursor-pointer hover:bg-muted/50">Amount Paid (₦) {getSortIndicator('amountDue')}</TableHead>
                           <TableHead onClick={() => requestSort('paymentStatus')} className="cursor-pointer hover:bg-muted/50">Payment Status {getSortIndicator('paymentStatus')}</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -405,7 +404,7 @@ export default function AdminPage() {
                           <TableHead>Full Name</TableHead>
                           <TableHead>Email</TableHead>
                           <TableHead>Date Registered</TableHead>
-                          <TableHead>Amount Due</TableHead>
+                          <TableHead>Amount Paid (₦)</TableHead>
                           <TableHead>Receipt</TableHead>
                           <TableHead>Payment Status</TableHead>
                           <TableHead>Actions</TableHead>
@@ -496,6 +495,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
-
-    

@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, UploadCloud, AlertCircle, Banknote } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-const TUTORIAL_FEE = 8000;
+// TUTORIAL_FEE constant removed
 
 const subjectsOffered = [
   { id: "jamb", label: "JAMB Preparatory Classes" },
@@ -39,7 +39,7 @@ type RegistrationFormValues = z.infer<typeof registrationSchema>;
 interface StoredStudentData extends RegistrationFormValues {
   id: string;
   registrationDate: string; // ISO string format
-  amountDue: number;
+  amountDue: number; // This will now store the amount student inputs
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
@@ -59,6 +59,7 @@ export default function RegisterPage() {
   const [currentRegistrant, setCurrentRegistrant] = useState<StoredStudentData | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [amountPayingInput, setAmountPayingInput] = useState<string>(""); // State for amount input
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
@@ -91,13 +92,14 @@ export default function RegisterPage() {
         ...data,
         id: `student-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         registrationDate: new Date().toISOString(),
-        amountDue: TUTORIAL_FEE,
+        amountDue: 0, // Initialize amountDue, will be updated in payment step
         paymentStatus: 'pending_payment',
         paymentReceiptUrl: null,
       };
       localStorage.setItem("registrations", JSON.stringify([...existingRegistrations, newRegistration]));
       setCurrentRegistrant(newRegistration);
       setRegistrationStep('payment');
+      setAmountPayingInput(""); // Reset amount paying input for the new session
       reset(); 
       window.scrollTo(0, 0);
     } catch (error) {
@@ -142,24 +144,35 @@ export default function RegisterPage() {
       });
       return;
     }
+    const paidAmount = parseFloat(amountPayingInput);
+    if (isNaN(paidAmount) || paidAmount <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Please enter a valid positive amount.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmittingProof(true);
     try {
       const receiptDataUrl = await getBase64(receiptFile);
       const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
       const updatedRegistrations = existingRegistrations.map(reg => 
         reg.id === currentRegistrant.id 
-        ? { ...reg, paymentReceiptUrl: receiptDataUrl, paymentStatus: 'pending_verification' as const } 
+        ? { ...reg, paymentReceiptUrl: receiptDataUrl, paymentStatus: 'pending_verification' as const, amountDue: paidAmount } 
         : reg
       );
       localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
       toast({
         title: "Payment Proof Submitted!",
-        description: "Your payment proof has been uploaded. We will verify it shortly.",
+        description: `Your payment proof for ₦${paidAmount.toLocaleString()} has been uploaded. We will verify it shortly.`,
       });
       setRegistrationStep('submitted');
       setReceiptFile(null);
       setReceiptPreview(null);
-      setCurrentRegistrant(null); // Clear current registrant after submission
+      setCurrentRegistrant(null); 
+      setAmountPayingInput(""); 
       window.scrollTo(0, 0);
     } catch (error) {
       console.error("Failed to save payment proof to localStorage", error);
@@ -178,6 +191,7 @@ export default function RegisterPage() {
     setCurrentRegistrant(null);
     setReceiptFile(null);
     setReceiptPreview(null);
+    setAmountPayingInput("");
     reset(); 
   }
 
@@ -206,7 +220,7 @@ export default function RegisterPage() {
             <CardContent className="space-y-6">
                <Alert variant="default" className="bg-blue-50 border-blue-200">
                 <Banknote className="h-5 w-5 text-blue-600" />
-                <AlertTitle className="text-blue-700 font-semibold">Tutorial Fee: ₦{TUTORIAL_FEE.toLocaleString()}</AlertTitle>
+                <AlertTitle className="text-blue-700 font-semibold">Payment Instructions</AlertTitle>
                 <AlertDescription className="text-blue-600 mt-2">
                   Please make payment to the following account:
                   <ul className="list-disc list-inside mt-2 space-y-1">
@@ -214,9 +228,22 @@ export default function RegisterPage() {
                     <li><strong>Account Number:</strong> 123456789</li>
                     <li><strong>Bank:</strong> Opay</li>
                   </ul>
-                   Ensure the narration includes your full name for easy identification. After payment, upload your receipt below.
+                   Ensure the narration includes your full name for easy identification. After payment, enter the amount paid and upload your receipt below.
                 </AlertDescription>
               </Alert>
+
+              <div>
+                <Label htmlFor="amountPaying">Amount Paying (₦)</Label>
+                <Input 
+                  id="amountPaying" 
+                  type="number" 
+                  value={amountPayingInput}
+                  onChange={(e) => setAmountPayingInput(e.target.value)}
+                  placeholder="e.g., 8000"
+                  className="mt-1"
+                  min="0"
+                />
+              </div>
 
               <div>
                 <Label htmlFor="receiptUpload" className="flex items-center gap-2 mb-2 cursor-pointer text-sm font-medium">
@@ -240,7 +267,7 @@ export default function RegisterPage() {
               </div>
               <Button 
                 onClick={handlePaymentProofSubmit} 
-                disabled={!receiptFile || isSubmittingProof} 
+                disabled={!receiptFile || isSubmittingProof || !amountPayingInput || parseFloat(amountPayingInput) <= 0} 
                 className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
               >
                 {isSubmittingProof ? "Submitting Proof..." : "Confirm Payment & Submit Proof"}
@@ -284,7 +311,7 @@ export default function RegisterPage() {
         <Card className="max-w-2xl mx-auto shadow-xl">
           <CardHeader>
             <CardTitle className="text-xl text-primary">Step 1: Personal Information</CardTitle>
-            <CardDescription>Please provide accurate details. The tutorial fee is ₦{TUTORIAL_FEE.toLocaleString()}.</CardDescription>
+            <CardDescription>Please provide accurate details. You will specify the amount paid in the next step.</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-6">
@@ -365,5 +392,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
-    
