@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote, ArrowUpDown, CalendarDays, Tag } from "lucide-react";
+import { LogOut, UserCircle2, CheckCircle, XCircle, Eye, ShieldAlert, BadgeDollarSign, Clock, ThumbsUp, ThumbsDown, ListChecks, Banknote, ArrowUpDown, CalendarDays } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -27,7 +27,6 @@ import {
 import Image from 'next/image';
 import { format } from 'date-fns';
 
-// Mirrors subjectsOffered in register page for filtering
 const programFilters = [
   { id: "all", label: "All Programs" },
   { id: "jamb", label: "JAMB" },
@@ -42,10 +41,11 @@ interface Student {
   email: string;
   phone: string;
   address: string;
-  selectedSubjects: string[]; // Array of program IDs like "jamb", "waec"
+  dateOfBirth: Date;
+  selectedSubjects: string[]; 
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date; 
-  amountDue: number; // This now reflects the amount the student inputted as paid
+  amountDue: number; // Amount student inputted as paid
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
@@ -66,12 +66,10 @@ export default function AdminPage() {
   const [passwordInput, setPasswordInput] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Sorting state
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'registrationDate', direction: 'descending' });
   
-  // Filtering state
-  const [filterClassTiming, setFilterClassTiming] = useState<string>('all'); // 'all', 'morning', 'afternoon'
-  const [filterProgram, setFilterProgram] = useState<string>('all'); // 'all', or program ID
+  const [filterClassTiming, setFilterClassTiming] = useState<string>('all'); 
+  const [filterProgram, setFilterProgram] = useState<string>('all'); 
 
   useEffect(() => {
     setIsClient(true);
@@ -93,10 +91,11 @@ export default function AdminPage() {
           email: s.email || 'N/A',
           phone: s.phone || 'N/A',
           address: s.address || 'N/A',
+          dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
           selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
           classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
           registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
-          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, // Amount student claims to have paid
+          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, 
           paymentReceiptUrl: s.paymentReceiptUrl || null,
           paymentStatus: s.paymentStatus || 'pending_payment',
         }));
@@ -150,7 +149,6 @@ export default function AdminPage() {
         reg.id === studentId ? { ...reg, paymentStatus: status } : reg
       );
       localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
-      // Update local state for immediate UI feedback
       setAllStudents(prevStudents => prevStudents.map(s => s.id === studentId ? {...s, paymentStatus: status} : s)); 
       toast({
         title: "Payment Status Updated",
@@ -178,7 +176,6 @@ export default function AdminPage() {
   const filteredAndSortedStudents = useMemo(() => {
     let sortableStudents = [...allStudents];
 
-    // Filtering
     if (filterClassTiming !== 'all') {
       sortableStudents = sortableStudents.filter(student => student.classTiming === filterClassTiming);
     }
@@ -186,7 +183,6 @@ export default function AdminPage() {
       sortableStudents = sortableStudents.filter(student => student.selectedSubjects.includes(filterProgram));
     }
 
-    // Sorting
     if (sortConfig.key !== null) {
       sortableStudents.sort((a, b) => {
         const valA = a[sortConfig.key!];
@@ -344,6 +340,7 @@ export default function AdminPage() {
                           <TableHead onClick={() => requestSort('fullName')} className="cursor-pointer hover:bg-muted/50">Full Name {getSortIndicator('fullName')}</TableHead>
                           <TableHead onClick={() => requestSort('email')} className="cursor-pointer hover:bg-muted/50">Email {getSortIndicator('email')}</TableHead>
                           <TableHead onClick={() => requestSort('phone')} className="cursor-pointer hover:bg-muted/50">Phone {getSortIndicator('phone')}</TableHead>
+                          <TableHead onClick={() => requestSort('dateOfBirth')} className="cursor-pointer hover:bg-muted/50">Date of Birth {getSortIndicator('dateOfBirth')}</TableHead>
                           <TableHead onClick={() => requestSort('selectedSubjects')} className="cursor-pointer hover:bg-muted/50">Programs {getSortIndicator('selectedSubjects')}</TableHead>
                           <TableHead onClick={() => requestSort('classTiming')} className="cursor-pointer hover:bg-muted/50">Class Timing {getSortIndicator('classTiming')}</TableHead>
                           <TableHead onClick={() => requestSort('registrationDate')} className="cursor-pointer hover:bg-muted/50">Date Joined {getSortIndicator('registrationDate')}</TableHead>
@@ -357,6 +354,7 @@ export default function AdminPage() {
                             <TableCell className="font-medium">{student.fullName}</TableCell>
                             <TableCell>{student.email}</TableCell>
                             <TableCell>{student.phone}</TableCell>
+                            <TableCell>{format(student.dateOfBirth, 'PP')}</TableCell>
                             <TableCell>{student.selectedSubjects.map(s => s.toUpperCase()).join(", ")}</TableCell>
                             <TableCell className="capitalize">{student.classTiming}</TableCell>
                             <TableCell>{format(student.registrationDate, 'PPp')}</TableCell>
@@ -495,3 +493,5 @@ export default function AdminPage() {
     </div>
   );
 }
+
+    

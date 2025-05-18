@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, ChangeEvent } from "react";
-import { useForm, type SubmitHandler } from "react-hook-form";
+import { useForm, type SubmitHandler, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import PageHeader from "@/components/shared/PageHeader";
@@ -13,10 +13,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, UploadCloud, AlertCircle, Banknote } from "lucide-react";
+import { CheckCircle2, UploadCloud, Banknote, Calendar as CalendarIconLucide } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
-// TUTORIAL_FEE constant removed
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 const subjectsOffered = [
   { id: "jamb", label: "JAMB Preparatory Classes" },
@@ -30,16 +32,18 @@ const registrationSchema = z.object({
   email: z.string().email("Invalid email address"),
   phone: z.string().min(10, "Phone number must be at least 10 digits").regex(/^\+?[0-9\s-()]+$/, "Invalid phone number format"),
   address: z.string().min(5, "Address must be at least 5 characters"),
+  dateOfBirth: z.date({ required_error: "Date of birth is required" }),
   selectedSubjects: z.array(z.string()).min(1, "Please select at least one subject/program"),
   classTiming: z.enum(["morning", "afternoon"], { required_error: "Please select a class timing" }),
 });
 
 type RegistrationFormValues = z.infer<typeof registrationSchema>;
 
-interface StoredStudentData extends RegistrationFormValues {
+interface StoredStudentData extends Omit<RegistrationFormValues, 'dateOfBirth'> {
   id: string;
+  dateOfBirth: string; // Store as ISO string
   registrationDate: string; // ISO string format
-  amountDue: number; // This will now store the amount student inputs
+  amountDue: number; 
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
@@ -59,7 +63,7 @@ export default function RegisterPage() {
   const [currentRegistrant, setCurrentRegistrant] = useState<StoredStudentData | null>(null);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
-  const [amountPayingInput, setAmountPayingInput] = useState<string>(""); // State for amount input
+  const [amountPayingInput, setAmountPayingInput] = useState<string>(""); 
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
@@ -68,6 +72,7 @@ export default function RegisterPage() {
   }, []);
   
   const {
+    control,
     register,
     handleSubmit,
     formState: { errors, isSubmitting: isSubmittingForm },
@@ -79,6 +84,7 @@ export default function RegisterPage() {
     defaultValues: {
       selectedSubjects: [],
       classTiming: undefined,
+      dateOfBirth: undefined,
     },
   });
 
@@ -88,18 +94,30 @@ export default function RegisterPage() {
     if (!isClient) return;
     try {
       const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
+      
+      const emailExists = existingRegistrations.some(reg => reg.email.toLowerCase() === data.email.toLowerCase());
+      if (emailExists) {
+        toast({
+          title: "Registration Failed",
+          description: "This email address is already registered.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const newRegistration: StoredStudentData = {
         ...data,
         id: `student-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        dateOfBirth: data.dateOfBirth.toISOString(),
         registrationDate: new Date().toISOString(),
-        amountDue: 0, // Initialize amountDue, will be updated in payment step
+        amountDue: 0, 
         paymentStatus: 'pending_payment',
         paymentReceiptUrl: null,
       };
       localStorage.setItem("registrations", JSON.stringify([...existingRegistrations, newRegistration]));
       setCurrentRegistrant(newRegistration);
       setRegistrationStep('payment');
-      setAmountPayingInput(""); // Reset amount paying input for the new session
+      setAmountPayingInput(""); 
       reset(); 
       window.scrollTo(0, 0);
     } catch (error) {
@@ -340,6 +358,44 @@ export default function RegisterPage() {
               </div>
 
               <div>
+                <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                <Controller
+                  control={control}
+                  name="dateOfBirth"
+                  render={({ field }) => (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full justify-start text-left font-normal mt-1",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          <CalendarIconLucide className="mr-2 h-4 w-4" />
+                          {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={(date) => field.onChange(date)}
+                          initialFocus
+                          captionLayout="dropdown-buttons"
+                          fromYear={1950}
+                          toYear={new Date().getFullYear() - 5} // Min age 5 for example
+                          disabled={(date) => date > new Date(new Date().setFullYear(new Date().getFullYear() - 5)) || date < new Date("1950-01-01")}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                />
+                {errors.dateOfBirth && <p className="text-sm text-destructive mt-1">{errors.dateOfBirth.message}</p>}
+              </div>
+
+
+              <div>
                 <Label>Select Program(s)/Subject(s)</Label>
                 <div className="mt-2 space-y-2">
                   {subjectsOffered.map((subject) => (
@@ -392,3 +448,5 @@ export default function RegisterPage() {
     </div>
   );
 }
+
+    
