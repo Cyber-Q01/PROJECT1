@@ -1,16 +1,16 @@
 
 "use client"; 
 import { useState, useEffect, FormEvent, useMemo } from 'react';
+import Link from 'next/link';
 import PageHeader from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, UserCircle2, Users, Banknote as BanknoteIcon, FileText, Clock, ShieldAlert } from "lucide-react";
+import { LogOut, UserCircle2, Users, Banknote as BanknoteIcon, FileText, Clock, ShieldAlert, ArrowRight, ListOrdered, CreditCard } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
-import { format } from 'date-fns';
 
 const programFilters = [
   { id: "jamb", label: "JAMB" },
@@ -61,7 +61,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, description, cl
 };
 
 
-export default function AdminPage() {
+export default function AdminDashboardPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
@@ -138,7 +138,7 @@ export default function AdminPage() {
     }
     setUsernameInput('');
     setPasswordInput('');
-    setAllStudents([]); // Clear student data on logout
+    setAllStudents([]); 
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
 
@@ -157,11 +157,12 @@ export default function AdminPage() {
     const totalRevenue = allStudents
       .filter(s => s.paymentStatus === 'approved')
       .reduce((sum, s) => sum + s.amountDue, 0);
-    const totalRegistrations = totalStudents; // Assuming one registration per student
+    const totalRegistrations = totalStudents; 
     const pendingPayments = allStudents.filter(s => s.paymentStatus === 'pending_verification').length;
 
     const programDistribution = programFilters.map(progFilter => {
-      const count = allStudents.filter(s => s.selectedSubjects.includes(progFilter.id)).length;
+      // Ensure selectedSubjects is always an array
+      const count = allStudents.filter(s => Array.isArray(s.selectedSubjects) && s.selectedSubjects.includes(progFilter.id)).length;
       const percentage = totalStudents > 0 ? Math.round((count / totalStudents) * 100) : 0;
       return { name: progFilter.label, count, percentage };
     });
@@ -235,7 +236,7 @@ export default function AdminPage() {
       <PageHeader title="Admin Dashboard" />
       <section className="container mx-auto py-10">
         <div className="flex justify-between items-center mb-8">
-          <h2 className="text-3xl font-bold text-primary">Admin Dashboard</h2>
+          <h2 className="text-3xl font-bold text-primary">Welcome, Admin!</h2>
           <Button variant="outline" onClick={handleLogout}>
             <LogOut className="mr-2 h-4 w-4" /> Logout
           </Button>
@@ -292,12 +293,33 @@ export default function AdminPage() {
               </CardContent>
             </Card>
             
-            <div className="mt-8 text-center">
-              <p className="text-muted-foreground">
-                For detailed student lists and payment verification, please refer to the respective management pages (to be added).
-              </p>
-               {/* Placeholder for links to detailed table views if needed in future */}
-            </div>
+            {/* Management Links */}
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-lg text-primary">Management Sections</CardTitle>
+                <CardDescription>Access detailed student and payment information.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid md:grid-cols-2 gap-6">
+                <Link href="/admin/registrations" passHref>
+                  <Button variant="outline" className="w-full h-16 text-base justify-between hover:bg-primary/5">
+                    <span>
+                      <ListOrdered className="mr-3 h-6 w-6 inline-block text-primary" />
+                      Manage Student Registrations
+                    </span>
+                    <ArrowRight className="h-5 w-5" />
+                  </Button>
+                </Link>
+                <Link href="/admin/payments" passHref>
+                  <Button variant="outline" className="w-full h-16 text-base justify-between hover:bg-primary/5">
+                    <span>
+                      <CreditCard className="mr-3 h-6 w-6 inline-block text-primary" />
+                      Manage Payments
+                    </span>
+                    <ArrowRight className="h-5 w-5" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
           </div>
         )}
       </section>
