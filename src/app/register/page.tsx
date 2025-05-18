@@ -40,7 +40,7 @@ const registrationSchema = z.object({
 type RegistrationFormValues = z.infer<typeof registrationSchema>;
 
 interface StoredStudentData extends Omit<RegistrationFormValues, 'dateOfBirth'> {
-  id: string;
+  id: string; // This will store the MongoDB _id as a string
   dateOfBirth: string; // Store as ISO string
   registrationDate: string; // ISO string format
   amountDue: number; 
@@ -90,41 +90,64 @@ export default function RegisterPage() {
 
   const selectedSubjectsWatch = watch("selectedSubjects");
 
-  const handleFormSubmit: SubmitHandler<RegistrationFormValues> = (data) => {
+  const handleFormSubmit: SubmitHandler<RegistrationFormValues> = async (data) => {
     if (!isClient) return;
+
+    const studentDataToSubmit = {
+      ...data,
+      id: `temp-${Date.now()}`, // Temporary ID, will be replaced by API ID
+      dateOfBirth: data.dateOfBirth.toISOString(),
+      registrationDate: new Date().toISOString(),
+      amountDue: 0, // Initialized, will be updated in payment step
+      paymentStatus: 'pending_payment' as const,
+      paymentReceiptUrl: null,
+    };
+
     try {
-      const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
-      
-      const emailExists = existingRegistrations.some(reg => reg.email.toLowerCase() === data.email.toLowerCase());
-      if (emailExists) {
+      const response = await fetch('/api/students', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(studentDataToSubmit),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
         toast({
           title: "Registration Failed",
-          description: "This email address is already registered.",
+          description: result.error || "An unknown error occurred.",
           variant: "destructive",
         });
         return;
       }
-
-      const newRegistration: StoredStudentData = {
-        ...data,
-        id: `student-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        dateOfBirth: data.dateOfBirth.toISOString(),
-        registrationDate: new Date().toISOString(),
-        amountDue: 0, 
-        paymentStatus: 'pending_payment',
-        paymentReceiptUrl: null,
+      
+      // API call successful, studentId is result.studentId (MongoDB _id)
+      const newRegistrationDataForStateAndLocalStorage: StoredStudentData = {
+        ...studentDataToSubmit,
+        id: result.studentId, // Use the ID from MongoDB
       };
-      localStorage.setItem("registrations", JSON.stringify([...existingRegistrations, newRegistration]));
-      setCurrentRegistrant(newRegistration);
+
+      // Temporary: Save to localStorage as well for the payment step to work
+      const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
+      localStorage.setItem("registrations", JSON.stringify([...existingRegistrations, newRegistrationDataForStateAndLocalStorage]));
+      
+      setCurrentRegistrant(newRegistrationDataForStateAndLocalStorage);
       setRegistrationStep('payment');
       setAmountPayingInput(""); 
       reset(); 
       window.scrollTo(0, 0);
+      toast({
+          title: "Registration Successful!",
+          description: "Please proceed to the payment step.",
+      });
+
     } catch (error) {
-      console.error("Failed to save initial registration to localStorage", error);
+      console.error("Failed to submit registration to API", error);
       toast({
         title: "Registration Error",
-        description: "Could not save your registration details. Please try again.",
+        description: "Could not submit your registration. Please check your connection and try again.",
         variant: "destructive",
       });
     }
@@ -174,6 +197,8 @@ export default function RegisterPage() {
 
     setIsSubmittingProof(true);
     try {
+      // TODO: In a full migration, this step would also be an API call to update the student record in MongoDB.
+      // For now, we update localStorage as a bridge.
       const receiptDataUrl = await getBase64(receiptFile);
       const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
       const updatedRegistrations = existingRegistrations.map(reg => 
@@ -182,9 +207,15 @@ export default function RegisterPage() {
         : reg
       );
       localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
+      
+      // We should also update the record in MongoDB here
+      // This is a placeholder for a future API call to update payment details
+      // For now, the MongoDB record will be out of sync with the payment details after this step
+      // until a full backend migration for payment updates is done.
+
       toast({
         title: "Payment Proof Submitted!",
-        description: `Your payment proof for ₦${paidAmount.toLocaleString()} has been uploaded. We will verify it shortly.`,
+        description: `Your payment proof for ₦${paidAmount.toLocaleString()} has been uploaded. We will verify it shortly. (Note: This update is currently local only and needs full backend integration for MongoDB persistence).`,
       });
       setRegistrationStep('submitted');
       setReceiptFile(null);
@@ -448,3 +479,5 @@ export default function RegisterPage() {
     </div>
   );
 }
+
+    
