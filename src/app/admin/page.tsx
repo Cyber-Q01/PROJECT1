@@ -15,7 +15,7 @@ const programFilters = [
   { id: "jamb", label: "JAMB" },
   { id: "waec", label: "WAEC/SSCE" },
   { id: "post_utme", label: "Post-UTME" },
-  { id: "edu_consult", label: "Edu Consult" },
+  // { id: "edu_consult", label: "Edu Consult" }, // Removed
 ];
 
 interface Student {
@@ -29,7 +29,7 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date; 
   amountDue: number; 
-  senderName?: string | null; // Changed from paymentReceiptUrl
+  senderName?: string | null; 
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -94,7 +94,7 @@ export default function AdminDashboardPage() {
         classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
         registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, 
-        senderName: s.senderName || null, // Changed
+        senderName: s.senderName || null, 
         paymentStatus: s.paymentStatus || 'pending_payment',
       }));
       setAllStudents(loadedStudentsData);

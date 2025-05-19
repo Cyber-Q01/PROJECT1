@@ -24,7 +24,7 @@ const subjectsOffered = [
   { id: "jamb", label: "JAMB Preparatory Classes" },
   { id: "waec", label: "WAEC/SSCE Tutoring" },
   { id: "post_utme", label: "Post-UTME Screening Prep" },
-  { id: "edu_consult", label: "Educational Consultancy" },
+  // { id: "edu_consult", label: "Educational Consultancy" }, // Removed
 ];
 
 const registrationSchema = z.object({
@@ -44,7 +44,7 @@ interface StoredStudentData extends Omit<RegistrationFormValues, 'dateOfBirth'> 
   dateOfBirth: string; 
   registrationDate: string; 
   amountDue: number; 
-  senderName?: string | null; // Changed from paymentReceiptUrl
+  senderName?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -54,7 +54,7 @@ export default function RegisterPage() {
   const [registrationStep, setRegistrationStep] = useState<'form' | 'payment' | 'submitted'>('form');
   const [currentRegistrant, setCurrentRegistrant] = useState<StoredStudentData | null>(null);
   const [amountPayingInput, setAmountPayingInput] = useState<string>(""); 
-  const [senderNameInput, setSenderNameInput] = useState<string>(""); // New state for sender name
+  const [senderNameInput, setSenderNameInput] = useState<string>("");
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
@@ -84,28 +84,18 @@ export default function RegisterPage() {
   const handleFormSubmit: SubmitHandler<RegistrationFormValues> = async (data) => {
     if (!isClient) return;
 
-    // Check for existing email in localStorage first for quick feedback (API will do final check)
-    const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
-    if (existingRegistrations.some(reg => reg.email === data.email)) {
-        toast({
-            title: "Registration Failed",
-            description: "This email address has already been used for a previous registration submission attempt. Please use a different email or contact support if you believe this is an error.",
-            variant: "destructive",
-        });
-        return;
-    }
-
     const studentDataToSubmit = {
       ...data,
       id: `temp-${Date.now()}`, 
       dateOfBirth: data.dateOfBirth.toISOString(),
       registrationDate: new Date().toISOString(),
-      amountDue: 0, 
+      amountDue: 0, // Initial amount is 0, will be set in payment step
       paymentStatus: 'pending_payment' as const,
-      senderName: null, // Initialize senderName
+      senderName: null, 
     };
 
     try {
+      console.log('[Registration] Submitting student data to API:', studentDataToSubmit);
       const response = await fetch('/api/students', {
         method: 'POST',
         headers: {
@@ -115,6 +105,7 @@ export default function RegisterPage() {
       });
 
       const result = await response.json();
+      console.log('[Registration] API Response:', result);
 
       if (!response.ok) {
         toast({
@@ -125,18 +116,15 @@ export default function RegisterPage() {
         return;
       }
       
-      const newRegistrationDataForStateAndLocalStorage: StoredStudentData = {
+      const newRegistrationDataForState: StoredStudentData = {
         ...studentDataToSubmit,
         id: result.studentId, 
       };
-
-      // Save to localStorage as a fallback/temporary store or for specific UI needs
-      localStorage.setItem("registrations", JSON.stringify([...existingRegistrations, newRegistrationDataForStateAndLocalStorage]));
       
-      setCurrentRegistrant(newRegistrationDataForStateAndLocalStorage);
+      setCurrentRegistrant(newRegistrationDataForState);
       setRegistrationStep('payment');
       setAmountPayingInput(""); 
-      setSenderNameInput(""); // Reset sender name input
+      setSenderNameInput(""); 
       reset(); 
       window.scrollTo(0, 0);
       toast({
@@ -144,11 +132,11 @@ export default function RegisterPage() {
           description: "Please proceed to the payment step.",
       });
 
-    } catch (error) {
-      console.error("Failed to submit registration to API", error);
+    } catch (error: any) {
+      console.error("[Registration] Failed to submit registration to API", error);
       toast({
         title: "Registration Error",
-        description: "Could not submit your registration. Please check your connection and try again.",
+        description: `Could not submit your registration: ${error?.message || 'Please check your connection and try again.'}`,
         variant: "destructive",
       });
     }
@@ -184,19 +172,25 @@ export default function RegisterPage() {
 
     setIsSubmittingProof(true);
     try {
-      // Update the local storage copy. The actual update to DB will happen via admin panel.
-      // This is a simplified flow for client-side storage.
-      // In a full DB setup, you might send this to an API immediately.
-      const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
-      const updatedRegistrations = existingRegistrations.map(reg => 
-        reg.id === currentRegistrant.id 
-        ? { ...reg, senderName: senderNameInput, paymentStatus: 'pending_verification' as const, amountDue: paidAmount } 
-        : reg
-      );
-      localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
-      
-      // If we had an API endpoint to update the student record in DB with senderName and amount, we'd call it here.
-      // For now, the admin will do the full verification and status update via their panel.
+      const payload = {
+        amountDue: paidAmount,
+        senderName: senderNameInput.trim(),
+        paymentStatus: 'pending_verification' as const,
+      };
+
+      console.log(`[Payment] Submitting payment info for student ${currentRegistrant.id}:`, payload);
+      const response = await fetch(`/api/students/${currentRegistrant.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+      console.log('[Payment] API Response:', result);
+
+      if (!response.ok) {
+        throw new Error(result.details || result.error || "Failed to submit payment information to server.");
+      }
       
       toast({
         title: "Payment Information Submitted!",
@@ -207,11 +201,11 @@ export default function RegisterPage() {
       setAmountPayingInput(""); 
       setSenderNameInput("");
       window.scrollTo(0, 0);
-    } catch (error) {
-      console.error("Failed to save payment proof to localStorage", error);
+    } catch (error: any) {
+      console.error("[Payment] Failed to submit payment proof", error);
       toast({
         title: "Submission Failed",
-        description: "Could not submit your payment information. Please try again.",
+        description: error.message || "Could not submit your payment information. Please try again.",
         variant: "destructive",
       });
     } finally {

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ArrowLeft, ArrowUpDown, XCircle, Download } from "lucide-react"; // Removed Filter
+import { LogOut, ArrowLeft, ArrowUpDown, XCircle, Download } from "lucide-react"; 
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -27,7 +27,7 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date;
   amountDue: number; 
-  senderName?: string | null; // Changed from paymentReceiptUrl
+  senderName?: string | null; 
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -36,7 +36,7 @@ const programFiltersData = [
   { id: "jamb", label: "JAMB" },
   { id: "waec", label: "WAEC/SSCE" },
   { id: "post_utme", label: "Post-UTME" },
-  { id: "edu_consult", label: "Edu Consult" },
+  // { id: "edu_consult", label: "Edu Consult" }, // Removed
 ];
 
 const classTimingFiltersData = [
@@ -97,7 +97,7 @@ export default function RegistrationManagementPage() {
         classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
         registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
-        senderName: s.senderName || null, // Changed
+        senderName: s.senderName || null, 
         paymentStatus: s.paymentStatus || 'pending_payment',
       }));
       setAllStudents(loadedStudentsData);
