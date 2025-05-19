@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, FormEvent, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import PageHeader from "@/components/shared/PageHeader";
@@ -47,6 +47,7 @@ export default function PaymentManagementPage() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
   
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -110,18 +111,46 @@ export default function PaymentManagementPage() {
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
 
-  const updatePaymentStatus = (studentId: string, newStatus: Student['paymentStatus']) => {
-    // This function will be updated later to call an API to update MongoDB.
-    // For now, it will update the local state for immediate UI feedback.
-    // The "Approve" and "Reject" buttons are disabled until the API is ready.
-    toast({ 
-        title: "Action Unavailable", 
-        description: "Payment status update via API is pending implementation. This change is not saved to the database.",
-        variant: "default"
-    });
-    // console.log(`TODO: Implement API call to update payment status for ${studentId} to ${newStatus}`);
-    // setAllStudents(prevStudents => prevStudents.map(s => s.id === studentId ? { ...s, paymentStatus: newStatus } : s));
+  const updatePaymentStatus = async (studentId: string, newStatus: Student['paymentStatus']) => {
+    if (!isClient) return;
+    setIsUpdatingPayment(true);
+    try {
+      const response = await fetch(`/api/students/${studentId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ paymentStatus: newStatus }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.details || result.error || `Failed to update status: ${response.statusText}`);
+      }
+
+      // Update local state for immediate UI feedback
+      setAllStudents(prevStudents =>
+        prevStudents.map(s => (s.id === studentId ? { ...s, paymentStatus: newStatus } : s))
+      );
+
+      toast({
+        title: "Payment Status Updated",
+        description: `Student payment successfully ${newStatus === 'approved' ? 'approved' : 'rejected'}.`,
+      });
+
+    } catch (error: any) {
+      console.error("Error updating payment status:", error);
+      toast({
+        title: "Update Failed",
+        description: error.message || "Could not update payment status.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingPayment(false);
+    }
   };
+
 
   const paymentStatusFilters = [
     { id: "all", label: "All Statuses" },
@@ -138,10 +167,12 @@ export default function PaymentManagementPage() {
         student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.phone.includes(searchTerm);
+      // Show students who have a receipt OR are pending_payment (so admin can see who hasn't uploaded)
+      // OR if "all" statuses are selected, show everyone
       const hasReceiptOrRelevantStatus = student.paymentReceiptUrl || 
                                          filterPaymentStatus === "all" || 
                                          filterPaymentStatus === "pending_payment" ||
-                                         student.paymentStatus === 'pending_verification';
+                                         student.paymentStatus === 'pending_verification'; // Ensure pending verification always shows
                                          
       return matchesStatus && matchesSearchTerm && hasReceiptOrRelevantStatus;
     }).sort((a,b) => new Date(b.registrationDate).getTime() - new Date(a.registrationDate).getTime());
@@ -242,7 +273,7 @@ export default function PaymentManagementPage() {
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="text-primary text-xl">Verify Student Payments</CardTitle>
-            <CardDescription>Review uploaded payment receipts and approve or reject them. Note: Database updates for Approve/Reject are pending.</CardDescription>
+            <CardDescription>Review uploaded payment receipts and approve or reject them.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
@@ -341,8 +372,7 @@ export default function PaymentManagementPage() {
                                 variant="default" 
                                 className="bg-green-600 hover:bg-green-700" 
                                 onClick={() => updatePaymentStatus(student.id, 'approved')}
-                                disabled={true} // TODO: Remove disabled when API is ready
-                                title="Payment update API pending"
+                                disabled={isUpdatingPayment}
                               >
                                 <CheckCircle className="mr-1 h-4 w-4" /> Approve
                               </Button>
@@ -350,8 +380,7 @@ export default function PaymentManagementPage() {
                                 size="sm" 
                                 variant="destructive" 
                                 onClick={() => updatePaymentStatus(student.id, 'rejected')}
-                                disabled={true} // TODO: Remove disabled when API is ready
-                                title="Payment update API pending"
+                                disabled={isUpdatingPayment}
                               >
                                 <XCircle className="mr-1 h-4 w-4" /> Reject
                               </Button>
