@@ -68,20 +68,33 @@ export async function PATCH(
     const result = await studentsCollection.findOneAndUpdate(
       { _id: new ObjectId(studentId) },
       { $set: updateFields },
-      { returnDocument: 'after' } // Important: returns the updated document
+      { returnDocument: 'after' } 
     );
 
-    if (!result) { // findOneAndUpdate returns null if no document matched
-      console.warn(`[API Students PATCH /${studentId}] Student not found for update.`);
-      return NextResponse.json({ error: 'Student not found' }, { status: 404 });
+    if (!result || !result.value) { 
+      console.warn(`[API Students PATCH /${studentId}] Student not found for update or update operation failed.`);
+      return NextResponse.json({ error: 'Student not found or update failed' }, { status: 404 });
     }
     
-    // The document in `result` is the updated student document
-    const updatedStudent = { ...result, id: result._id.toString() };
-    delete updatedStudent._id; // Remove _id if you only want id string
-
-    console.log(`[API Students PATCH /${studentId}] Student record updated successfully. New data:`, updatedStudent);
-    return NextResponse.json({ message: 'Student record updated successfully', studentId, updatedStudent }, { status: 200 });
+    const updatedStudentDoc = result.value;
+    // Ensure all fields are correctly mapped, especially if the document structure might vary
+    const updatedStudentResponse = {
+      id: updatedStudentDoc._id.toString(),
+      fullName: updatedStudentDoc.fullName,
+      email: updatedStudentDoc.email,
+      phone: updatedStudentDoc.phone,
+      address: updatedStudentDoc.address,
+      dateOfBirth: updatedStudentDoc.dateOfBirth, // ensure this is a string if needed by frontend
+      selectedSubjects: updatedStudentDoc.selectedSubjects,
+      classTiming: updatedStudentDoc.classTiming,
+      registrationDate: updatedStudentDoc.registrationDate, // ensure this is a string if needed
+      amountDue: updatedStudentDoc.amountDue,
+      senderName: updatedStudentDoc.senderName,
+      paymentStatus: updatedStudentDoc.paymentStatus,
+    };
+    
+    console.log(`[API Students PATCH /${studentId}] Student record updated successfully. New data:`, updatedStudentResponse);
+    return NextResponse.json({ message: 'Student record updated successfully', studentId, updatedStudent: updatedStudentResponse }, { status: 200 });
 
   } catch (e) {
     console.error(`[API Students PATCH /${params.id}] Error updating student record:`, e);
@@ -93,5 +106,3 @@ export async function PATCH(
     }, { status: 500 });
   }
 }
-
-    
