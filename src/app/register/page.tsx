@@ -17,14 +17,13 @@ import { CheckCircle2, Banknote, Calendar as CalendarIconLucide, User } from "lu
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
+import { format, subYears, startOfYear, endOfYear } from "date-fns";
 import { cn } from "@/lib/utils";
 
 const subjectsOffered = [
   { id: "jamb", label: "JAMB Preparatory Classes" },
   { id: "waec", label: "WAEC/SSCE Tutoring" },
   { id: "post_utme", label: "Post-UTME Screening Prep" },
-  // { id: "edu_consult", label: "Educational Consultancy" }, // Removed
 ];
 
 const registrationSchema = z.object({
@@ -58,8 +57,18 @@ export default function RegisterPage() {
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
+  // State for Calendar range
+  const [calendarToYear, setCalendarToYear] = useState<number | undefined>(undefined);
+  const [maxBirthDate, setMaxBirthDate] = useState<Date | undefined>(undefined);
+  const minBirthDate = new Date("1950-01-01");
+
+
   useEffect(() => {
     setIsClient(true);
+    // Calculate date ranges on client mount
+    const today = new Date();
+    setCalendarToYear(subYears(today, 5).getFullYear());
+    setMaxBirthDate(subYears(today, 5));
   }, []);
   
   const {
@@ -86,22 +95,25 @@ export default function RegisterPage() {
 
     const studentDataToSubmit = {
       ...data,
-      id: `temp-${Date.now()}`, 
-      dateOfBirth: data.dateOfBirth.toISOString(),
+      dateOfBirth: data.dateOfBirth.toISOString(), // Keep as ISO string for API
       registrationDate: new Date().toISOString(),
-      amountDue: 0, // Initial amount is 0, will be set in payment step
+      amountDue: 0, 
       paymentStatus: 'pending_payment' as const,
       senderName: null, 
     };
+    
+    // Remove id for initial POST to API, API will generate _id
+    const { id, ...apiPayload } = { ...studentDataToSubmit, id: "" };
+
 
     try {
-      console.log('[Registration] Submitting student data to API:', studentDataToSubmit);
+      console.log('[Registration] Submitting student data to API:', apiPayload);
       const response = await fetch('/api/students', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(studentDataToSubmit),
+        body: JSON.stringify(apiPayload),
       });
 
       const result = await response.json();
@@ -117,8 +129,13 @@ export default function RegisterPage() {
       }
       
       const newRegistrationDataForState: StoredStudentData = {
-        ...studentDataToSubmit,
+        ...data, // Use original data with Date object for dateOfBirth
         id: result.studentId, 
+        dateOfBirth: data.dateOfBirth.toISOString(), // Store as ISO string in state if needed for consistency
+        registrationDate: studentDataToSubmit.registrationDate,
+        amountDue: studentDataToSubmit.amountDue,
+        paymentStatus: studentDataToSubmit.paymentStatus,
+        senderName: studentDataToSubmit.senderName,
       };
       
       setCurrentRegistrant(newRegistrationDataForState);
@@ -136,7 +153,7 @@ export default function RegisterPage() {
       console.error("[Registration] Failed to submit registration to API", error);
       toast({
         title: "Registration Error",
-        description: `Could not submit your registration: ${error?.message || 'Please check your connection and try again.'}`,
+        description: `Could not submit your registration: ${error?.message || 'Please check your connection and try again.'}. Details: ${error.details || ''}`,
         variant: "destructive",
       });
     }
@@ -375,22 +392,27 @@ export default function RegisterPage() {
                             "w-full justify-start text-left font-normal mt-1",
                             !field.value && "text-muted-foreground"
                           )}
+                          disabled={!isClient} // Disable until client is mounted
                         >
                           <CalendarIconLucide className="mr-2 h-4 w-4" />
                           {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={(date) => field.onChange(date)}
-                          initialFocus
-                          captionLayout="dropdown-buttons"
-                          fromYear={1950}
-                          toYear={new Date().getFullYear() - 5} 
-                          disabled={(date) => date > new Date(new Date().setFullYear(new Date().getFullYear() - 5)) || date < new Date("1950-01-01")}
-                        />
+                        {isClient && calendarToYear && maxBirthDate && ( // Render Calendar only on client and when dates are ready
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={(date) => field.onChange(date)}
+                            initialFocus
+                            captionLayout="dropdown-buttons"
+                            fromYear={1950}
+                            toYear={calendarToYear}
+                            fromDate={minBirthDate}
+                            toDate={maxBirthDate}
+                            disabled={(date) => date > maxBirthDate || date < minBirthDate}
+                          />
+                        )}
                       </PopoverContent>
                     </Popover>
                   )}
