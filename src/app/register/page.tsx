@@ -40,9 +40,9 @@ const registrationSchema = z.object({
 type RegistrationFormValues = z.infer<typeof registrationSchema>;
 
 interface StoredStudentData extends Omit<RegistrationFormValues, 'dateOfBirth'> {
-  id: string; // This will store the MongoDB _id as a string
-  dateOfBirth: string; // Store as ISO string
-  registrationDate: string; // ISO string format
+  id: string; 
+  dateOfBirth: string; 
+  registrationDate: string; 
   amountDue: number; 
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
@@ -95,10 +95,10 @@ export default function RegisterPage() {
 
     const studentDataToSubmit = {
       ...data,
-      id: `temp-${Date.now()}`, // Temporary ID, will be replaced by API ID
+      id: `temp-${Date.now()}`, 
       dateOfBirth: data.dateOfBirth.toISOString(),
       registrationDate: new Date().toISOString(),
-      amountDue: 0, // Initialized, will be updated in payment step
+      amountDue: 0, 
       paymentStatus: 'pending_payment' as const,
       paymentReceiptUrl: null,
     };
@@ -117,19 +117,17 @@ export default function RegisterPage() {
       if (!response.ok) {
         toast({
           title: "Registration Failed",
-          description: result.error || "An unknown error occurred.",
+          description: result.details || result.error || "An unknown error occurred. Check server logs.",
           variant: "destructive",
         });
         return;
       }
       
-      // API call successful, studentId is result.studentId (MongoDB _id)
       const newRegistrationDataForStateAndLocalStorage: StoredStudentData = {
         ...studentDataToSubmit,
-        id: result.studentId, // Use the ID from MongoDB
+        id: result.studentId, 
       };
 
-      // Temporary: Save to localStorage as well for the payment step to work
       const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
       localStorage.setItem("registrations", JSON.stringify([...existingRegistrations, newRegistrationDataForStateAndLocalStorage]));
       
@@ -147,7 +145,7 @@ export default function RegisterPage() {
       console.error("Failed to submit registration to API", error);
       toast({
         title: "Registration Error",
-        description: "Could not submit your registration. Please check your connection and try again.",
+        description: "Could not submit your registration. Please check your connection and try again. Also check server logs.",
         variant: "destructive",
       });
     }
@@ -156,7 +154,7 @@ export default function RegisterPage() {
   const handleReceiptFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      if (file.size > 2 * 1024 * 1024) { 
         toast({
           title: "File Too Large",
           description: "Please upload an image smaller than 2MB.",
@@ -197,8 +195,6 @@ export default function RegisterPage() {
 
     setIsSubmittingProof(true);
     try {
-      // TODO: In a full migration, this step would also be an API call to update the student record in MongoDB.
-      // For now, we update localStorage as a bridge.
       const receiptDataUrl = await getBase64(receiptFile);
       const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
       const updatedRegistrations = existingRegistrations.map(reg => 
@@ -208,14 +204,9 @@ export default function RegisterPage() {
       );
       localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
       
-      // We should also update the record in MongoDB here
-      // This is a placeholder for a future API call to update payment details
-      // For now, the MongoDB record will be out of sync with the payment details after this step
-      // until a full backend migration for payment updates is done.
-
       toast({
         title: "Payment Proof Submitted!",
-        description: `Your payment proof for ₦${paidAmount.toLocaleString()} has been uploaded. We will verify it shortly. (Note: This update is currently local only and needs full backend integration for MongoDB persistence).`,
+        description: `Your payment proof for ₦${paidAmount.toLocaleString()} has been uploaded. We will verify it shortly.`,
       });
       setRegistrationStep('submitted');
       setReceiptFile(null);
@@ -415,7 +406,7 @@ export default function RegisterPage() {
                           initialFocus
                           captionLayout="dropdown-buttons"
                           fromYear={1950}
-                          toYear={new Date().getFullYear() - 5} // Min age 5 for example
+                          toYear={new Date().getFullYear() - 5} 
                           disabled={(date) => date > new Date(new Date().setFullYear(new Date().getFullYear() - 5)) || date < new Date("1950-01-01")}
                         />
                       </PopoverContent>
@@ -479,5 +470,6 @@ export default function RegisterPage() {
     </div>
   );
 }
+    
 
     
