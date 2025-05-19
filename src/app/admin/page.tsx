@@ -1,16 +1,16 @@
 
 "use client"; 
-import { useState, useEffect, FormEvent, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import PageHeader from "@/components/shared/PageHeader";
+import AdminLoginForm from "@/components/admin/AdminLoginForm"; // Import the new component
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, UserCircle2, Users, Banknote as BanknoteIcon, FileText, Clock, ShieldAlert, ArrowRight, ListOrdered, CreditCard } from "lucide-react";
+import { LogOut, Users, Banknote as BanknoteIcon, FileText, Clock, ArrowRight, ListOrdered, CreditCard } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
+
 
 const programFilters = [
   { id: "jamb", label: "JAMB" },
@@ -33,9 +33,6 @@ interface Student {
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
-
-const ADMIN_USERNAME = "folorunshoa08@gmail.com";
-const ADMIN_PASSWORD = "Adekunle"; 
 
 interface StatCardProps {
   title: string;
@@ -67,9 +64,6 @@ export default function AdminDashboardPage() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
     setIsClient(true);
@@ -114,21 +108,13 @@ export default function AdminDashboardPage() {
     if (isAuthenticated && isClient) {
       loadStudents();
     }
-  }, [isAuthenticated, isClient]);
+  }, [isAuthenticated, isClient, toast]); // Added toast to dependency array
 
-  const handleLogin = (event: FormEvent) => {
-    event.preventDefault();
-    if (usernameInput === ADMIN_USERNAME && passwordInput === ADMIN_PASSWORD) {
+  const handleSuccessfulLogin = () => {
       setIsAuthenticated(true);
       if (isClient) {
         sessionStorage.setItem("isAdminAuthenticated", "true"); 
       }
-      setLoginError('');
-      toast({ title: "Login Successful", description: "Welcome, Admin!" });
-    } else {
-      setLoginError("Invalid username or password.");
-      toast({ title: "Login Failed", description: "Incorrect credentials.", variant: "destructive" });
-    }
   };
 
   const handleLogout = () => {
@@ -136,8 +122,6 @@ export default function AdminDashboardPage() {
     if (isClient) {
       sessionStorage.removeItem("isAdminAuthenticated");
     }
-    setUsernameInput('');
-    setPasswordInput('');
     setAllStudents([]); 
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
@@ -161,7 +145,6 @@ export default function AdminDashboardPage() {
     const pendingPayments = allStudents.filter(s => s.paymentStatus === 'pending_verification').length;
 
     const programDistribution = programFilters.map(progFilter => {
-      // Ensure selectedSubjects is always an array
       const count = allStudents.filter(s => Array.isArray(s.selectedSubjects) && s.selectedSubjects.includes(progFilter.id)).length;
       const percentage = totalStudents > 0 ? Math.round((count / totalStudents) * 100) : 0;
       return { name: progFilter.label, count, percentage };
@@ -174,61 +157,14 @@ export default function AdminDashboardPage() {
   if (!isClient) {
      return (
         <div>
-            <PageHeader title="Admin Login" description="Access the student management dashboard." />
+            <PageHeader title="Admin Dashboard" description="Access the student management dashboard." />
             <div className="container mx-auto py-10 text-center">Loading admin panel...</div>
         </div>
     );
   }
 
   if (!isAuthenticated) {
-    return (
-      <div>
-        <PageHeader title="Admin Login" description="Access the student management dashboard." />
-        <section className="container mx-auto py-10">
-          <Card className="max-w-md mx-auto shadow-xl">
-            <CardHeader>
-              <CardTitle className="text-xl text-primary">Admin Panel Login</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div>
-                  <Label htmlFor="username">Username (Email)</Label>
-                  <Input 
-                    id="username" 
-                    type="email" 
-                    value={usernameInput} 
-                    onChange={(e) => setUsernameInput(e.target.value)} 
-                    className="mt-1" 
-                    required 
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="password">Password</Label>
-                  <Input 
-                    id="password" 
-                    type="password" 
-                    value={passwordInput} 
-                    onChange={(e) => setPasswordInput(e.target.value)} 
-                    className="mt-1" 
-                    required 
-                  />
-                </div>
-                {loginError && (
-                  <Alert variant="destructive">
-                    <ShieldAlert className="h-4 w-4" />
-                    <AlertTitle>Login Error</AlertTitle>
-                    <AlertDescription>{loginError}</AlertDescription>
-                  </Alert>
-                )}
-                <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
-                  Login
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </section>
-      </div>
-    );
+    return <AdminLoginForm onAuthenticated={handleSuccessfulLogin} pageTitle="Admin Dashboard" />;
   }
 
   return (
@@ -325,9 +261,4 @@ export default function AdminDashboardPage() {
       </section>
     </div>
   );
-}
-
-// Helper function to get tailwind class names (cn)
-function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ');
 }

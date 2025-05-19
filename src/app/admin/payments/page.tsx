@@ -5,13 +5,13 @@ import { useState, useEffect, FormEvent, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import PageHeader from "@/components/shared/PageHeader";
+import AdminLoginForm from "@/components/admin/AdminLoginForm"; // Import the new component
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ShieldAlert, ArrowLeft, CheckCircle, XCircle, Eye, Download as DownloadIcon } from "lucide-react"; // Renamed Download to DownloadIcon
+import { LogOut, ArrowLeft, CheckCircle, XCircle, Eye, Download as DownloadIcon } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
@@ -33,9 +33,6 @@ interface Student {
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
-const ADMIN_USERNAME = "folorunshoa08@gmail.com";
-const ADMIN_PASSWORD = "Adekunle";
-
 const programFiltersData = [
   { id: "jamb", label: "JAMB" },
   { id: "waec", label: "WAEC/SSCE" },
@@ -50,9 +47,6 @@ export default function PaymentManagementPage() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState('');
   
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -100,24 +94,14 @@ export default function PaymentManagementPage() {
     }
   }, [isAuthenticated, isClient, toast]);
 
-  const handleLogin = (event: FormEvent) => {
-    event.preventDefault();
-    if (usernameInput === ADMIN_USERNAME && passwordInput === ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      if (isClient) sessionStorage.setItem("isAdminAuthenticated", "true");
-      setLoginError('');
-      toast({ title: "Login Successful", description: "Welcome, Admin!" });
-    } else {
-      setLoginError("Invalid username or password.");
-      toast({ title: "Login Failed", description: "Incorrect credentials.", variant: "destructive" });
-    }
+  const handleSuccessfulLogin = () => {
+    setIsAuthenticated(true);
+    if (isClient) sessionStorage.setItem("isAdminAuthenticated", "true");
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     if (isClient) sessionStorage.removeItem("isAdminAuthenticated");
-    setUsernameInput('');
-    setPasswordInput('');
     setAllStudents([]);
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
@@ -153,9 +137,6 @@ export default function PaymentManagementPage() {
         student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.phone.includes(searchTerm);
-      // For this tab, we primarily care about students with receipts or in verification/payment stages.
-      // If showing 'all' or 'pending_payment', include those without receipts yet.
-      // Otherwise, they must have a receipt.
       const hasReceiptOrRelevantStatus = student.paymentReceiptUrl || 
                                          filterPaymentStatus === "all" || 
                                          filterPaymentStatus === "pending_payment" ||
@@ -178,13 +159,12 @@ export default function PaymentManagementPage() {
   const handleDownloadReceiptImage = (receiptUrl: string, studentName: string) => {
     const link = document.createElement('a');
     link.href = receiptUrl;
-    // Guess extension or use a generic one. PNG is common for screenshots.
     const extension = receiptUrl.split('.').pop()?.split(';')[0] || 'png';
     link.download = `receipt_${studentName.replace(/\s+/g, '_')}.${extension}`; 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    URL.revokeObjectURL(link.href); // Clean up blob URL if it was one
+    URL.revokeObjectURL(link.href); 
     toast({ title: "Receipt Downloaded", description: `Receipt for ${studentName} started downloading.` });
   };
 
@@ -237,31 +217,14 @@ export default function PaymentManagementPage() {
   if (!isClient) {
     return (
       <div>
-        <PageHeader title="Admin Login" description="Access the student management dashboard." />
+        <PageHeader title="Payment Management" description="Access the student management dashboard." />
         <div className="container mx-auto py-10 text-center">Loading admin panel...</div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return (
-      <div>
-        <PageHeader title="Admin Login" description="Access the student management dashboard." />
-        <section className="container mx-auto py-10">
-          <Card className="max-w-md mx-auto shadow-xl">
-            <CardHeader><CardTitle className="text-xl text-primary">Admin Panel Login</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div><Label htmlFor="username">Username (Email)</Label><Input id="username" type="email" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} className="mt-1" required /></div>
-                <div><Label htmlFor="password">Password</Label><Input id="password" type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="mt-1" required /></div>
-                {loginError && <Alert variant="destructive"><ShieldAlert className="h-4 w-4" /><AlertTitle>Login Error</AlertTitle><AlertDescription>{loginError}</AlertDescription></Alert>}
-                <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">Login</Button>
-              </form>
-            </CardContent>
-          </Card>
-        </section>
-      </div>
-    );
+    return <AdminLoginForm onAuthenticated={handleSuccessfulLogin} pageTitle="Payment Management" />;
   }
   
   return (
@@ -402,9 +365,3 @@ export default function PaymentManagementPage() {
     </div>
   );
 }
-
-// Helper function to get tailwind class names (cn) - Not used in this component
-function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ');
-}
-

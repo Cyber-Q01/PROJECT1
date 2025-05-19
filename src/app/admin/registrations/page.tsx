@@ -1,16 +1,16 @@
 
 "use client";
 
-import { useState, useEffect, FormEvent, useMemo, ChangeEvent } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import PageHeader from "@/components/shared/PageHeader";
+import AdminLoginForm from "@/components/admin/AdminLoginForm"; // Import the new component
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ShieldAlert, ArrowLeft, ArrowUpDown, Filter, XCircle, Download } from "lucide-react";
+import { LogOut, ArrowLeft, ArrowUpDown, Filter, XCircle, Download } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -30,9 +30,6 @@ interface Student {
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
-
-const ADMIN_USERNAME = "folorunshoa08@gmail.com";
-const ADMIN_PASSWORD = "Adekunle";
 
 const programFiltersData = [
   { id: "all", label: "All Programs" },
@@ -64,9 +61,6 @@ export default function RegistrationManagementPage() {
   const { toast } = useToast();
   const [isClient, setIsClient] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [loginError, setLoginError] = useState('');
 
   const [filterProgram, setFilterProgram] = useState<string>("all");
   const [filterClassTiming, setFilterClassTiming] = useState<string>("all");
@@ -118,24 +112,16 @@ export default function RegistrationManagementPage() {
     }
   }, [isAuthenticated, isClient, toast]);
 
-  const handleLogin = (event: FormEvent) => {
-    event.preventDefault();
-    if (usernameInput === ADMIN_USERNAME && passwordInput === ADMIN_PASSWORD) {
-      setIsAuthenticated(true);
-      if (isClient) sessionStorage.setItem("isAdminAuthenticated", "true");
-      setLoginError('');
-      toast({ title: "Login Successful", description: "Welcome, Admin!" });
-    } else {
-      setLoginError("Invalid username or password.");
-      toast({ title: "Login Failed", description: "Incorrect credentials.", variant: "destructive" });
+  const handleSuccessfulLogin = () => {
+    setIsAuthenticated(true);
+    if (isClient) {
+      sessionStorage.setItem("isAdminAuthenticated", "true");
     }
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     if (isClient) sessionStorage.removeItem("isAdminAuthenticated");
-    setUsernameInput('');
-    setPasswordInput('');
     setAllStudents([]);
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
@@ -269,31 +255,14 @@ export default function RegistrationManagementPage() {
   if (!isClient) {
     return (
       <div>
-        <PageHeader title="Admin Login" description="Access the student management dashboard." />
+        <PageHeader title="Registration Management" description="Access the student management dashboard." />
         <div className="container mx-auto py-10 text-center">Loading admin panel...</div>
       </div>
     );
   }
 
   if (!isAuthenticated) {
-    return (
-      <div>
-        <PageHeader title="Admin Login" description="Access the student management dashboard." />
-        <section className="container mx-auto py-10">
-          <Card className="max-w-md mx-auto shadow-xl">
-            <CardHeader><CardTitle className="text-xl text-primary">Admin Panel Login</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div><Label htmlFor="username">Username (Email)</Label><Input id="username" type="email" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} className="mt-1" required /></div>
-                <div><Label htmlFor="password">Password</Label><Input id="password" type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="mt-1" required /></div>
-                {loginError && <Alert variant="destructive"><ShieldAlert className="h-4 w-4" /><AlertTitle>Login Error</AlertTitle><AlertDescription>{loginError}</AlertDescription></Alert>}
-                <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">Login</Button>
-              </form>
-            </CardContent>
-          </Card>
-        </section>
-      </div>
-    );
+    return <AdminLoginForm onAuthenticated={handleSuccessfulLogin} pageTitle="Registration Management" />;
   }
   
   const getPaymentStatusBadgeVariant = (status: Student['paymentStatus']) => {
@@ -426,9 +395,3 @@ export default function RegistrationManagementPage() {
     </div>
   );
 }
-
-// Helper function to get tailwind class names (cn) - Not used in this component, but good practice to keep if other parts need it.
-function cn(...classes: (string | undefined | null | false)[]): string {
-  return classes.filter(Boolean).join(' ');
-}
-
