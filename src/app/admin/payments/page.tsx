@@ -5,7 +5,7 @@ import { useState, useEffect, FormEvent, useMemo } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import PageHeader from "@/components/shared/PageHeader";
-import AdminLoginForm from "@/components/admin/AdminLoginForm"; // Import the new component
+import AdminLoginForm from "@/components/admin/AdminLoginForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { format } from 'date-fns';
 
 interface Student {
-  id: string;
+  id: string; // MongoDB _id
   fullName: string;
   email: string;
   phone: string;
@@ -58,41 +58,45 @@ export default function PaymentManagementPage() {
     }
   }, []);
 
-  const loadStudents = () => {
-    if (isClient) {
-      setIsLoading(true);
-      try {
-        const storedRegistrations = JSON.parse(localStorage.getItem("registrations") || "[]");
-        const loadedStudentsData: Student[] = storedRegistrations.map((s: any, i: number) => ({
-          id: s.id || `local-${Date.now()}-${i}`,
-          fullName: s.fullName || 'N/A',
-          email: s.email || 'N/A',
-          phone: s.phone || 'N/A',
-          address: s.address || 'N/A',
-          dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
-          selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
-          classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
-          registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
-          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
-          paymentReceiptUrl: s.paymentReceiptUrl || null,
-          paymentStatus: s.paymentStatus || 'pending_payment',
-        }));
-        setAllStudents(loadedStudentsData);
-      } catch (error) {
-        console.error("Error loading students from localStorage", error);
-        toast({ title: "Error", description: "Could not load student data.", variant: "destructive" });
-        setAllStudents([]);
-      } finally {
-        setIsLoading(false);
+  const fetchStudents = async () => {
+    if (!isClient || !isAuthenticated) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/students');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch students: ${response.statusText}`);
       }
+      const data = await response.json();
+      const loadedStudentsData: Student[] = data.students.map((s: any) => ({
+        id: s._id || s.id, // Use _id from MongoDB
+        fullName: s.fullName || 'N/A',
+        email: s.email || 'N/A',
+        phone: s.phone || 'N/A',
+        address: s.address || 'N/A',
+        dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
+        selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
+        classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
+        registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
+        amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
+        paymentReceiptUrl: s.paymentReceiptUrl || null,
+        paymentStatus: s.paymentStatus || 'pending_payment',
+      }));
+      setAllStudents(loadedStudentsData);
+    } catch (error: any) {
+      console.error("Error loading students from API", error);
+      toast({ title: "Error Loading Students", description: error.message || "Could not load student data.", variant: "destructive" });
+      setAllStudents([]);
+    } finally {
+      setIsLoading(false);
     }
   };
   
   useEffect(() => {
     if (isAuthenticated && isClient) {
-      loadStudents();
+      fetchStudents();
     }
-  }, [isAuthenticated, isClient, toast]);
+  }, [isAuthenticated, isClient]);
 
   const handleSuccessfulLogin = () => {
     setIsAuthenticated(true);
@@ -107,19 +111,16 @@ export default function PaymentManagementPage() {
   };
 
   const updatePaymentStatus = (studentId: string, newStatus: Student['paymentStatus']) => {
-    if (!isClient) return;
-    try {
-      const existingRegistrations: Student[] = JSON.parse(localStorage.getItem("registrations") || "[]");
-      const updatedRegistrations = existingRegistrations.map(reg =>
-        reg.id === studentId ? { ...reg, paymentStatus: newStatus } : reg
-      );
-      localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
-      setAllStudents(prevStudents => prevStudents.map(s => s.id === studentId ? { ...s, paymentStatus: newStatus } : s));
-      toast({ title: "Payment Status Updated", description: `Student ${studentId}'s payment status changed to ${newStatus.replace('_', ' ')}.` });
-    } catch (error) {
-      console.error("Error updating payment status", error);
-      toast({ title: "Update Error", description: "Could not update payment status.", variant: "destructive" });
-    }
+    // This function will be updated later to call an API to update MongoDB.
+    // For now, it will update the local state for immediate UI feedback.
+    // The "Approve" and "Reject" buttons are disabled until the API is ready.
+    toast({ 
+        title: "Action Unavailable", 
+        description: "Payment status update via API is pending implementation. This change is not saved to the database.",
+        variant: "default"
+    });
+    // console.log(`TODO: Implement API call to update payment status for ${studentId} to ${newStatus}`);
+    // setAllStudents(prevStudents => prevStudents.map(s => s.id === studentId ? { ...s, paymentStatus: newStatus } : s));
   };
 
   const paymentStatusFilters = [
@@ -241,7 +242,7 @@ export default function PaymentManagementPage() {
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="text-primary text-xl">Verify Student Payments</CardTitle>
-            <CardDescription>Review uploaded payment receipts and approve or reject them.</CardDescription>
+            <CardDescription>Review uploaded payment receipts and approve or reject them. Note: Database updates for Approve/Reject are pending.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
@@ -276,7 +277,7 @@ export default function PaymentManagementPage() {
             </div>
 
             {isLoading ? (
-              <p>Loading payment data...</p>
+              <p className="text-center py-8">Loading payment data...</p>
             ) : filteredStudentsForPayment.length === 0 ? (
                  <p className="text-center text-muted-foreground py-8">No payments match the current filters, or no receipts have been uploaded yet.</p>
             ) : (
@@ -335,10 +336,23 @@ export default function PaymentManagementPage() {
                         <TableCell className="text-center">
                           {student.paymentStatus === 'pending_verification' && (
                             <div className="flex gap-2 justify-center">
-                              <Button size="sm" variant="default" className="bg-green-600 hover:bg-green-700" onClick={() => updatePaymentStatus(student.id, 'approved')}>
+                              <Button 
+                                size="sm" 
+                                variant="default" 
+                                className="bg-green-600 hover:bg-green-700" 
+                                onClick={() => updatePaymentStatus(student.id, 'approved')}
+                                disabled={true} // TODO: Remove disabled when API is ready
+                                title="Payment update API pending"
+                              >
                                 <CheckCircle className="mr-1 h-4 w-4" /> Approve
                               </Button>
-                              <Button size="sm" variant="destructive" onClick={() => updatePaymentStatus(student.id, 'rejected')}>
+                              <Button 
+                                size="sm" 
+                                variant="destructive" 
+                                onClick={() => updatePaymentStatus(student.id, 'rejected')}
+                                disabled={true} // TODO: Remove disabled when API is ready
+                                title="Payment update API pending"
+                              >
                                 <XCircle className="mr-1 h-4 w-4" /> Reject
                               </Button>
                             </div>
@@ -365,3 +379,5 @@ export default function PaymentManagementPage() {
     </div>
   );
 }
+
+    

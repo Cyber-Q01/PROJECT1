@@ -3,14 +3,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import PageHeader from "@/components/shared/PageHeader";
-import AdminLoginForm from "@/components/admin/AdminLoginForm"; // Import the new component
+import AdminLoginForm from "@/components/admin/AdminLoginForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogOut, Users, Banknote as BanknoteIcon, FileText, Clock, ArrowRight, ListOrdered, CreditCard } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-
 
 const programFilters = [
   { id: "jamb", label: "JAMB" },
@@ -20,7 +19,7 @@ const programFilters = [
 ];
 
 interface Student {
-  id: string;
+  id: string; // This will be MongoDB _id
   fullName: string;
   email: string;
   phone: string;
@@ -74,41 +73,45 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
-  const loadStudents = () => {
-    if (isClient) {
-      setIsLoading(true);
-      try {
-        const storedRegistrations = JSON.parse(localStorage.getItem("registrations") || "[]");
-        const loadedStudentsData: Student[] = storedRegistrations.map((s: any, i: number) => ({
-          id: s.id || `local-${Date.now()}-${i}`,
-          fullName: s.fullName || 'N/A',
-          email: s.email || 'N/A',
-          phone: s.phone || 'N/A',
-          address: s.address || 'N/A',
-          dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
-          selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
-          classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
-          registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
-          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, 
-          paymentReceiptUrl: s.paymentReceiptUrl || null,
-          paymentStatus: s.paymentStatus || 'pending_payment',
-        }));
-        setAllStudents(loadedStudentsData);
-      } catch (error) {
-        console.error("Error loading students from localStorage", error);
-        toast({ title: "Error", description: "Could not load student data.", variant: "destructive" });
-        setAllStudents([]); 
-      } finally {
-        setIsLoading(false);
+  const fetchStudents = async () => {
+    if (!isClient || !isAuthenticated) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/students');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch students: ${response.statusText}`);
       }
+      const data = await response.json();
+      const loadedStudentsData: Student[] = data.students.map((s: any) => ({
+        id: s._id || s.id, // Use _id from MongoDB
+        fullName: s.fullName || 'N/A',
+        email: s.email || 'N/A',
+        phone: s.phone || 'N/A',
+        address: s.address || 'N/A',
+        dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
+        selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
+        classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
+        registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
+        amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, 
+        paymentReceiptUrl: s.paymentReceiptUrl || null,
+        paymentStatus: s.paymentStatus || 'pending_payment',
+      }));
+      setAllStudents(loadedStudentsData);
+    } catch (error: any) {
+      console.error("Error loading students from API", error);
+      toast({ title: "Error Loading Students", description: error.message || "Could not load student data from the server.", variant: "destructive" });
+      setAllStudents([]); 
+    } finally {
+      setIsLoading(false);
     }
   };
   
   useEffect(() => {
     if (isAuthenticated && isClient) {
-      loadStudents();
+      fetchStudents();
     }
-  }, [isAuthenticated, isClient, toast]); // Added toast to dependency array
+  }, [isAuthenticated, isClient]); // Removed toast from dependencies as fetchStudents now handles it
 
   const handleSuccessfulLogin = () => {
       setIsAuthenticated(true);
@@ -213,7 +216,7 @@ export default function AdminDashboardPage() {
                 <CardDescription>Breakdown of students by enrolled programs.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {dashboardStats.programDistribution.length > 0 ? (
+                {dashboardStats.programDistribution.length > 0 && allStudents.length > 0 ? (
                   dashboardStats.programDistribution.map((program) => (
                     <div key={program.name}>
                       <div className="flex justify-between mb-1">
@@ -224,7 +227,7 @@ export default function AdminDashboardPage() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">No student data available for distribution.</p>
+                  <p className="text-sm text-muted-foreground">No student data available for distribution or no students registered yet.</p>
                 )}
               </CardContent>
             </Card>
@@ -262,3 +265,5 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
+    

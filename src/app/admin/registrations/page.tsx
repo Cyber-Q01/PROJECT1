@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import PageHeader from "@/components/shared/PageHeader";
-import AdminLoginForm from "@/components/admin/AdminLoginForm"; // Import the new component
+import AdminLoginForm from "@/components/admin/AdminLoginForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from 'date-fns';
 
 interface Student {
-  id: string;
+  id: string; // MongoDB _id
   fullName: string;
   email: string;
   phone: string;
@@ -76,41 +76,45 @@ export default function RegistrationManagementPage() {
     }
   }, []);
 
-  const loadStudents = () => {
-    if (isClient) {
-      setIsLoading(true);
-      try {
-        const storedRegistrations = JSON.parse(localStorage.getItem("registrations") || "[]");
-        const loadedStudentsData: Student[] = storedRegistrations.map((s: any, i: number) => ({
-          id: s.id || `local-${Date.now()}-${i}`,
-          fullName: s.fullName || 'N/A',
-          email: s.email || 'N/A',
-          phone: s.phone || 'N/A',
-          address: s.address || 'N/A',
-          dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
-          selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
-          classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
-          registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
-          amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
-          paymentReceiptUrl: s.paymentReceiptUrl || null,
-          paymentStatus: s.paymentStatus || 'pending_payment',
-        }));
-        setAllStudents(loadedStudentsData);
-      } catch (error) {
-        console.error("Error loading students from localStorage", error);
-        toast({ title: "Error", description: "Could not load student data.", variant: "destructive" });
-        setAllStudents([]);
-      } finally {
-        setIsLoading(false);
+  const fetchStudents = async () => {
+    if (!isClient || !isAuthenticated) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/students');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch students: ${response.statusText}`);
       }
+      const data = await response.json();
+      const loadedStudentsData: Student[] = data.students.map((s: any) => ({
+        id: s._id || s.id, // Use _id from MongoDB
+        fullName: s.fullName || 'N/A',
+        email: s.email || 'N/A',
+        phone: s.phone || 'N/A',
+        address: s.address || 'N/A',
+        dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
+        selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
+        classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
+        registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
+        amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
+        paymentReceiptUrl: s.paymentReceiptUrl || null,
+        paymentStatus: s.paymentStatus || 'pending_payment',
+      }));
+      setAllStudents(loadedStudentsData);
+    } catch (error: any) {
+      console.error("Error loading students from API", error);
+      toast({ title: "Error Loading Students", description: error.message || "Could not load student data.", variant: "destructive" });
+      setAllStudents([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   useEffect(() => {
     if (isAuthenticated && isClient) {
-      loadStudents();
+      fetchStudents();
     }
-  }, [isAuthenticated, isClient, toast]);
+  }, [isAuthenticated, isClient]);
 
   const handleSuccessfulLogin = () => {
     setIsAuthenticated(true);
@@ -339,7 +343,7 @@ export default function RegistrationManagementPage() {
             </div>
             
             {isLoading ? (
-              <p>Loading students...</p>
+              <p className="text-center py-8">Loading students...</p>
             ) : filteredAndSortedStudents.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No students match the current filters.</p>
             ) : (
@@ -395,3 +399,5 @@ export default function RegistrationManagementPage() {
     </div>
   );
 }
+
+    
