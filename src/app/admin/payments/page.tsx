@@ -3,18 +3,18 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+// import Image from 'next/image'; // No longer needed for receipt image
 import PageHeader from "@/components/shared/PageHeader";
 import AdminLoginForm from "@/components/admin/AdminLoginForm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ArrowLeft, CheckCircle, XCircle, Eye, Download as DownloadIcon } from "lucide-react";
+import { LogOut, ArrowLeft, CheckCircle, XCircle, Download as DownloadIcon, User } from "lucide-react"; // Removed Eye, added User
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog";
+// import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from "@/components/ui/dialog"; // No longer needed for image dialog
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from 'date-fns';
 
@@ -29,7 +29,7 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date;
   amountDue: number;
-  paymentReceiptUrl?: string | null;
+  senderName?: string | null; // Changed from paymentReceiptUrl
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -70,7 +70,7 @@ export default function PaymentManagementPage() {
       }
       const data = await response.json();
       const loadedStudentsData: Student[] = data.students.map((s: any) => ({
-        id: s._id || s.id, // Use _id from MongoDB
+        id: s._id || s.id, 
         fullName: s.fullName || 'N/A',
         email: s.email || 'N/A',
         phone: s.phone || 'N/A',
@@ -80,7 +80,7 @@ export default function PaymentManagementPage() {
         classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
         registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
-        paymentReceiptUrl: s.paymentReceiptUrl || null,
+        senderName: s.senderName || null, // Changed from paymentReceiptUrl
         paymentStatus: s.paymentStatus || 'pending_payment',
       }));
       setAllStudents(loadedStudentsData);
@@ -115,12 +115,17 @@ export default function PaymentManagementPage() {
     if (!isClient) return;
     setIsUpdatingPayment(true);
     try {
+      // For 'approved' or 'rejected', we primarily update paymentStatus.
+      // SenderName and amountDue are assumed to be set by the student and verified by admin.
+      // If admin needs to edit these, a different UI/API might be needed.
+      const payload: { paymentStatus: Student['paymentStatus'] } = { paymentStatus: newStatus };
+
       const response = await fetch(`/api/students/${studentId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ paymentStatus: newStatus }),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
@@ -129,14 +134,13 @@ export default function PaymentManagementPage() {
         throw new Error(result.details || result.error || `Failed to update status: ${response.statusText}`);
       }
 
-      // Update local state for immediate UI feedback
       setAllStudents(prevStudents =>
         prevStudents.map(s => (s.id === studentId ? { ...s, paymentStatus: newStatus } : s))
       );
 
       toast({
         title: "Payment Status Updated",
-        description: `Student payment successfully ${newStatus === 'approved' ? 'approved' : 'rejected'}.`,
+        description: `Student payment successfully ${newStatus === 'approved' ? 'approved' : (newStatus === 'rejected' ? 'rejected' : 'updated')}.`,
       });
 
     } catch (error: any) {
@@ -167,14 +171,15 @@ export default function PaymentManagementPage() {
         student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.phone.includes(searchTerm);
-      // Show students who have a receipt OR are pending_payment (so admin can see who hasn't uploaded)
+      
+      // Show students who have a senderName OR are pending_payment (so admin can see who hasn't submitted info)
       // OR if "all" statuses are selected, show everyone
-      const hasReceiptOrRelevantStatus = student.paymentReceiptUrl || 
+      const hasSenderNameOrRelevantStatus = student.senderName || 
                                          filterPaymentStatus === "all" || 
                                          filterPaymentStatus === "pending_payment" ||
-                                         student.paymentStatus === 'pending_verification'; // Ensure pending verification always shows
+                                         student.paymentStatus === 'pending_verification';
                                          
-      return matchesStatus && matchesSearchTerm && hasReceiptOrRelevantStatus;
+      return matchesStatus && matchesSearchTerm && hasSenderNameOrRelevantStatus;
     }).sort((a,b) => new Date(b.registrationDate).getTime() - new Date(a.registrationDate).getTime());
   }, [allStudents, filterPaymentStatus, searchTerm]);
 
@@ -188,18 +193,6 @@ export default function PaymentManagementPage() {
     }
   };
   
-  const handleDownloadReceiptImage = (receiptUrl: string, studentName: string) => {
-    const link = document.createElement('a');
-    link.href = receiptUrl;
-    const extension = receiptUrl.split('.').pop()?.split(';')[0] || 'png';
-    link.download = `receipt_${studentName.replace(/\s+/g, '_')}.${extension}`; 
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href); 
-    toast({ title: "Receipt Downloaded", description: `Receipt for ${studentName} started downloading.` });
-  };
-
   const handleDownloadCSVPayments = () => {
     if (filteredStudentsForPayment.length === 0) {
       toast({ title: "No Data", description: "No payment data to download with current filters.", variant: "default" });
@@ -207,20 +200,21 @@ export default function PaymentManagementPage() {
     }
 
     const headers = [
-      'Student Name', 'Email', 'Program(s)', 'Amount Paid (₦)', 
+      'Student Name', 'Email', 'Program(s)', 'Amount Paid (₦)', 'Sender Name',
       'Date Registered', 'Payment Status'
     ];
     const csvRows = [headers.join(',')];
 
     filteredStudentsForPayment.forEach(student => {
       const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s)?.label || s).join('; ');
-      const paymentStatusText = student.paymentStatus.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const paymentStatusText = student.paymentStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       
       const row = [
         `"${student.fullName}"`,
         `"${student.email}"`,
         `"${programs}"`,
         student.amountDue.toString(),
+        `"${student.senderName || 'N/A'}"`,
         student.registrationDate ? `"${format(student.registrationDate, 'yyyy-MM-dd HH:mm')}"` : 'N/A',
         `"${paymentStatusText}"`,
       ];
@@ -273,7 +267,7 @@ export default function PaymentManagementPage() {
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="text-primary text-xl">Verify Student Payments</CardTitle>
-            <CardDescription>Review uploaded payment receipts and approve or reject them.</CardDescription>
+            <CardDescription>Review submitted sender names and approve or reject payments.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
@@ -310,7 +304,7 @@ export default function PaymentManagementPage() {
             {isLoading ? (
               <p className="text-center py-8">Loading payment data...</p>
             ) : filteredStudentsForPayment.length === 0 ? (
-                 <p className="text-center text-muted-foreground py-8">No payments match the current filters, or no receipts have been uploaded yet.</p>
+                 <p className="text-center text-muted-foreground py-8">No payments match the current filters, or no payment information has been submitted yet.</p>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -322,7 +316,7 @@ export default function PaymentManagementPage() {
                       <TableHead>Amount Paid (₦)</TableHead>
                       <TableHead>Date Registered</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-center">Receipt</TableHead>
+                      <TableHead className="text-center">Sender Name</TableHead>
                       <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -336,32 +330,14 @@ export default function PaymentManagementPage() {
                         <TableCell>{student.registrationDate ? format(student.registrationDate, 'dd MMM yyyy') : 'N/A'}</TableCell>
                         <TableCell>
                           <Badge variant={getPaymentStatusBadgeVariant(student.paymentStatus)} className="capitalize">
-                            {student.paymentStatus.replace('_', ' ')}
+                            {student.paymentStatus.replace(/_/g, ' ')}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-center">
-                          {student.paymentReceiptUrl ? (
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button variant="outline" size="sm"><Eye className="mr-1 h-4 w-4" /> View</Button>
-                              </DialogTrigger>
-                              <DialogContent className="max-w-xl">
-                                <DialogHeader>
-                                  <DialogTitle>Payment Receipt: {student.fullName}</DialogTitle>
-                                </DialogHeader>
-                                <div className="my-4">
-                                  <Image src={student.paymentReceiptUrl} alt={`Receipt for ${student.fullName}`} width={500} height={700} className="rounded-md object-contain max-h-[70vh] w-auto mx-auto" />
-                                </div>
-                                <div className="flex justify-end gap-2">
-                                   <Button variant="outline" onClick={() => handleDownloadReceiptImage(student.paymentReceiptUrl!, student.fullName)}>
-                                        <DownloadIcon className="mr-2 h-4 w-4" /> Download Image
-                                    </Button>
-                                  <DialogClose asChild><Button variant="secondary">Close</Button></DialogClose>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
+                          {student.senderName ? (
+                            <span className="text-sm">{student.senderName}</span>
                           ) : (
-                            <span className="text-xs text-muted-foreground">No Receipt</span>
+                            <span className="text-xs text-muted-foreground">No Sender Name</span>
                           )}
                         </TableCell>
                         <TableCell className="text-center">
@@ -390,7 +366,7 @@ export default function PaymentManagementPage() {
                              <span className="text-xs text-muted-foreground">Verified</span>
                           )}
                           {student.paymentStatus === 'pending_payment' && (
-                             <span className="text-xs text-muted-foreground">Awaiting Receipt</span>
+                             <span className="text-xs text-muted-foreground">Awaiting Info</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -400,7 +376,7 @@ export default function PaymentManagementPage() {
               </div>
             )}
             <p className="text-sm text-muted-foreground mt-4">
-                Displaying {filteredStudentsForPayment.length} payments.
+                Displaying {filteredStudentsForPayment.length} payment records.
             </p>
           </CardContent>
         </Card>

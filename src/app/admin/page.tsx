@@ -19,7 +19,7 @@ const programFilters = [
 ];
 
 interface Student {
-  id: string; // This will be MongoDB _id
+  id: string; 
   fullName: string;
   email: string;
   phone: string;
@@ -29,7 +29,7 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date; 
   amountDue: number; 
-  paymentReceiptUrl?: string | null;
+  senderName?: string | null; // Changed from paymentReceiptUrl
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -84,7 +84,7 @@ export default function AdminDashboardPage() {
       }
       const data = await response.json();
       const loadedStudentsData: Student[] = data.students.map((s: any) => ({
-        id: s._id || s.id, // Use _id from MongoDB
+        id: s._id || s.id, 
         fullName: s.fullName || 'N/A',
         email: s.email || 'N/A',
         phone: s.phone || 'N/A',
@@ -94,7 +94,7 @@ export default function AdminDashboardPage() {
         classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
         registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, 
-        paymentReceiptUrl: s.paymentReceiptUrl || null,
+        senderName: s.senderName || null, // Changed
         paymentStatus: s.paymentStatus || 'pending_payment',
       }));
       setAllStudents(loadedStudentsData);
@@ -111,7 +111,7 @@ export default function AdminDashboardPage() {
     if (isAuthenticated && isClient) {
       fetchStudents();
     }
-  }, [isAuthenticated, isClient]); // Removed toast from dependencies as fetchStudents now handles it
+  }, [isAuthenticated, isClient]);
 
   const handleSuccessfulLogin = () => {
       setIsAuthenticated(true);
@@ -206,6 +206,7 @@ export default function AdminDashboardPage() {
                 title="PENDING PAYMENTS"
                 value={dashboardStats.pendingPayments}
                 icon={<Clock className="h-5 w-5 text-yellow-500" />}
+                description="Awaiting verification"
               />
             </div>
 

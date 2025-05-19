@@ -9,7 +9,7 @@ import { ObjectId } from 'mongodb';
 // Ensure this matches the structure you intend to store in MongoDB
 interface Student {
   _id?: ObjectId; // MongoDB typically uses _id
-  id: string; // Your existing local storage ID, can be kept or migrated
+  id?: string; // Retained for compatibility with potential localStorage logic, though _id is primary
   fullName: string;
   email: string;
   phone: string;
@@ -19,7 +19,7 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: string; // Store as ISO string or Date
   amountDue: number;
-  paymentReceiptUrl?: string | null;
+  senderName?: string | null; // Changed from paymentReceiptUrl
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -38,26 +38,31 @@ export async function GET(request: NextRequest) {
       .toArray();
     console.log(`[API Students GET] Successfully fetched ${students.length} students.`);
 
-    return NextResponse.json({ students }, { status: 200 });
+    // Map _id to id for frontend consistency if needed, but ensure _id is also available
+    const studentsWithId = students.map(student => ({
+      ...student,
+      id: student._id ? student._id.toString() : student.id, // Prioritize _id
+    }));
+
+    return NextResponse.json({ students: studentsWithId }, { status: 200 });
   } catch (e) {
-    console.error("[API Students GET] Error fetching students:", e); // Log the full error object
-    const error = e as Error & { code?: string; address?: string; port?: number }; // Extend type for potential network error props
+    console.error("[API Students GET] Error fetching students:", e); 
+    const error = e as Error & { code?: string; address?: string; port?: number }; 
     return NextResponse.json({ 
       error: 'Failed to fetch students', 
       details: error.message || 'Unknown error',
-      code: error.code, // Include error code if available
-      address: error.address, // Include address if available
-      port: error.port // Include port if available
+      code: error.code, 
+      address: error.address, 
+      port: error.port 
     }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const studentData: Omit<Student, '_id'> = await request.json();
+    const studentData: Omit<Student, '_id' | 'id'> & { dateOfBirth: string; registrationDate: string; senderName: null } = await request.json();
     console.log('[API Students POST] Received student data:', studentData);
 
-    // Basic validation
     if (!studentData.email || !studentData.fullName) {
       console.error('[API Students POST] Missing required fields.');
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -72,24 +77,33 @@ export async function POST(request: NextRequest) {
     const existingStudent = await db.collection<Student>("students").findOne({ email: studentData.email });
     if (existingStudent) {
       console.warn(`[API Students POST] Email already registered: ${studentData.email}`);
-      return NextResponse.json({ error: 'Email already registered' }, { status: 409 }); // 409 Conflict
+      return NextResponse.json({ error: 'Email already registered', details: `The email address ${studentData.email} is already in use.` }, { status: 409 }); // 409 Conflict
     }
 
-    console.log(`[API Students POST] Inserting new student: ${studentData.fullName}`);
-    const result = await db.collection<Student>("students").insertOne(studentData as Student);
+    const newStudentDocument: Omit<Student, '_id' | 'id'> = {
+        ...studentData,
+        amountDue: studentData.amountDue || 0, // Ensure amountDue is set, default to 0
+        paymentStatus: 'pending_payment', // Initial payment status
+        senderName: null, // Initialize senderName
+    };
+
+
+    console.log(`[API Students POST] Inserting new student: ${newStudentDocument.fullName}`);
+    const result = await db.collection("students").insertOne(newStudentDocument as Student);
     const insertedIdString = result.insertedId.toString();
     console.log(`[API Students POST] Student registered successfully with ID: ${insertedIdString}`);
 
     return NextResponse.json({ message: "Student registered successfully", studentId: insertedIdString }, { status: 201 });
   } catch (e) {
-    console.error("[API Students POST] Error registering student:", e); // Log the full error object
-    const error = e as Error & { code?: string; address?: string; port?: number }; // Extend type for potential network error props
+    console.error("[API Students POST] Error registering student:", e); 
+    const error = e as Error & { code?: string; address?: string; port?: number }; 
     return NextResponse.json({ 
       error: 'Failed to register student', 
       details: error.message || 'Unknown server error',
-      code: error.code, // Include error code if available
-      address: error.address, // Include address if available
-      port: error.port // Include port if available
+      code: error.code, 
+      address: error.address, 
+      port: error.port 
     }, { status: 500 });
   }
 }
+

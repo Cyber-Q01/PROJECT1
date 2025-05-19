@@ -13,7 +13,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle2, UploadCloud, Banknote, Calendar as CalendarIconLucide } from "lucide-react";
+import { CheckCircle2, Banknote, Calendar as CalendarIconLucide, User } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -44,26 +44,17 @@ interface StoredStudentData extends Omit<RegistrationFormValues, 'dateOfBirth'> 
   dateOfBirth: string; 
   registrationDate: string; 
   amountDue: number; 
-  paymentReceiptUrl?: string | null;
+  senderName?: string | null; // Changed from paymentReceiptUrl
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
-const getBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
-  });
-};
 
 export default function RegisterPage() {
   const { toast } = useToast();
   const [registrationStep, setRegistrationStep] = useState<'form' | 'payment' | 'submitted'>('form');
   const [currentRegistrant, setCurrentRegistrant] = useState<StoredStudentData | null>(null);
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
-  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [amountPayingInput, setAmountPayingInput] = useState<string>(""); 
+  const [senderNameInput, setSenderNameInput] = useState<string>(""); // New state for sender name
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
 
@@ -93,6 +84,17 @@ export default function RegisterPage() {
   const handleFormSubmit: SubmitHandler<RegistrationFormValues> = async (data) => {
     if (!isClient) return;
 
+    // Check for existing email in localStorage first for quick feedback (API will do final check)
+    const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
+    if (existingRegistrations.some(reg => reg.email === data.email)) {
+        toast({
+            title: "Registration Failed",
+            description: "This email address has already been used for a previous registration submission attempt. Please use a different email or contact support if you believe this is an error.",
+            variant: "destructive",
+        });
+        return;
+    }
+
     const studentDataToSubmit = {
       ...data,
       id: `temp-${Date.now()}`, 
@@ -100,7 +102,7 @@ export default function RegisterPage() {
       registrationDate: new Date().toISOString(),
       amountDue: 0, 
       paymentStatus: 'pending_payment' as const,
-      paymentReceiptUrl: null,
+      senderName: null, // Initialize senderName
     };
 
     try {
@@ -117,7 +119,7 @@ export default function RegisterPage() {
       if (!response.ok) {
         toast({
           title: "Registration Failed",
-          description: result.details || result.error || "An unknown error occurred. Check server logs.",
+          description: result.details || result.error || "An unknown error occurred. Please try again or contact support.",
           variant: "destructive",
         });
         return;
@@ -128,12 +130,13 @@ export default function RegisterPage() {
         id: result.studentId, 
       };
 
-      const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
+      // Save to localStorage as a fallback/temporary store or for specific UI needs
       localStorage.setItem("registrations", JSON.stringify([...existingRegistrations, newRegistrationDataForStateAndLocalStorage]));
       
       setCurrentRegistrant(newRegistrationDataForStateAndLocalStorage);
       setRegistrationStep('payment');
       setAmountPayingInput(""); 
+      setSenderNameInput(""); // Reset sender name input
       reset(); 
       window.scrollTo(0, 0);
       toast({
@@ -145,40 +148,18 @@ export default function RegisterPage() {
       console.error("Failed to submit registration to API", error);
       toast({
         title: "Registration Error",
-        description: "Could not submit your registration. Please check your connection and try again. Also check server logs.",
+        description: "Could not submit your registration. Please check your connection and try again.",
         variant: "destructive",
       });
     }
   };
 
-  const handleReceiptFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) { 
-        toast({
-          title: "File Too Large",
-          description: "Please upload an image smaller than 2MB.",
-          variant: "destructive",
-        });
-        setReceiptFile(null);
-        setReceiptPreview(null);
-        event.target.value = ""; 
-        return;
-      }
-      setReceiptFile(file);
-      const previewUrl = await getBase64(file);
-      setReceiptPreview(previewUrl);
-    } else {
-      setReceiptFile(null);
-      setReceiptPreview(null);
-    }
-  };
 
   const handlePaymentProofSubmit = async () => {
-    if (!isClient || !currentRegistrant || !receiptFile) {
+    if (!isClient || !currentRegistrant ) {
       toast({
         title: "Submission Error",
-        description: "No registration data or receipt file found.",
+        description: "No registration data found.",
         variant: "destructive",
       });
       return;
@@ -192,33 +173,45 @@ export default function RegisterPage() {
       });
       return;
     }
+    if (!senderNameInput.trim()) {
+      toast({
+        title: "Sender Name Required",
+        description: "Please enter the sender's name for payment confirmation.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSubmittingProof(true);
     try {
-      const receiptDataUrl = await getBase64(receiptFile);
+      // Update the local storage copy. The actual update to DB will happen via admin panel.
+      // This is a simplified flow for client-side storage.
+      // In a full DB setup, you might send this to an API immediately.
       const existingRegistrations: StoredStudentData[] = JSON.parse(localStorage.getItem("registrations") || "[]");
       const updatedRegistrations = existingRegistrations.map(reg => 
         reg.id === currentRegistrant.id 
-        ? { ...reg, paymentReceiptUrl: receiptDataUrl, paymentStatus: 'pending_verification' as const, amountDue: paidAmount } 
+        ? { ...reg, senderName: senderNameInput, paymentStatus: 'pending_verification' as const, amountDue: paidAmount } 
         : reg
       );
       localStorage.setItem("registrations", JSON.stringify(updatedRegistrations));
       
+      // If we had an API endpoint to update the student record in DB with senderName and amount, we'd call it here.
+      // For now, the admin will do the full verification and status update via their panel.
+      
       toast({
-        title: "Payment Proof Submitted!",
-        description: `Your payment proof for ₦${paidAmount.toLocaleString()} has been uploaded. We will verify it shortly.`,
+        title: "Payment Information Submitted!",
+        description: `Your payment information (Amount: ₦${paidAmount.toLocaleString()}, Sender: ${senderNameInput}) has been submitted. We will verify it shortly.`,
       });
       setRegistrationStep('submitted');
-      setReceiptFile(null);
-      setReceiptPreview(null);
       setCurrentRegistrant(null); 
       setAmountPayingInput(""); 
+      setSenderNameInput("");
       window.scrollTo(0, 0);
     } catch (error) {
       console.error("Failed to save payment proof to localStorage", error);
       toast({
-        title: "Upload Failed",
-        description: "Could not upload your payment proof. Please try again.",
+        title: "Submission Failed",
+        description: "Could not submit your payment information. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -229,9 +222,8 @@ export default function RegisterPage() {
   const startNewRegistration = () => {
     setRegistrationStep('form');
     setCurrentRegistrant(null);
-    setReceiptFile(null);
-    setReceiptPreview(null);
     setAmountPayingInput("");
+    setSenderNameInput("");
     reset(); 
   }
 
@@ -254,7 +246,7 @@ export default function RegisterPage() {
         <section className="container mx-auto py-10">
           <Card className="max-w-xl mx-auto shadow-xl">
             <CardHeader>
-              <CardTitle className="text-xl text-primary">Step 2: Make Payment</CardTitle>
+              <CardTitle className="text-xl text-primary">Step 2: Make Payment & Confirm</CardTitle>
               <CardDescription>Hi {currentRegistrant?.fullName}, please proceed with payment.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -268,7 +260,7 @@ export default function RegisterPage() {
                     <li><strong>Account Number:</strong> 123456789</li>
                     <li><strong>Bank:</strong> Opay</li>
                   </ul>
-                   Ensure the narration includes your full name for easy identification. After payment, enter the amount paid and upload your receipt below.
+                   Ensure the narration includes your full name. After payment, enter the amount paid and the sender's name below.
                 </AlertDescription>
               </Alert>
 
@@ -286,31 +278,27 @@ export default function RegisterPage() {
               </div>
 
               <div>
-                <Label htmlFor="receiptUpload" className="flex items-center gap-2 mb-2 cursor-pointer text-sm font-medium">
-                  <UploadCloud className="h-5 w-5 text-accent" />
-                  Upload Payment Receipt
+                <Label htmlFor="senderNameInput" className="flex items-center gap-2 mb-1">
+                  <User className="h-5 w-5 text-accent" />
+                  Sender's Name (for payment confirmation)
                 </Label>
                 <Input 
-                  id="receiptUpload" 
-                  type="file" 
-                  accept="image/png, image/jpeg, image/jpg" 
-                  onChange={handleReceiptFileChange} 
-                  className="mt-1 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
+                  id="senderNameInput" 
+                  type="text" 
+                  value={senderNameInput}
+                  onChange={(e) => setSenderNameInput(e.target.value)}
+                  placeholder="Enter the name on the sender's account"
+                  className="mt-1"
                 />
-                {receiptPreview && (
-                  <div className="mt-4">
-                    <p className="text-sm font-medium mb-1">Receipt Preview:</p>
-                    <img src={receiptPreview} alt="Receipt preview" className="max-w-xs max-h-48 rounded-md border object-contain" />
-                  </div>
-                )}
-                 {!receiptFile && <p className="text-xs text-muted-foreground mt-1">Please select a receipt file (PNG, JPG, JPEG, max 2MB).</p>}
+                 <p className="text-xs text-muted-foreground mt-1">This name will be used to verify your payment.</p>
               </div>
+
               <Button 
                 onClick={handlePaymentProofSubmit} 
-                disabled={!receiptFile || isSubmittingProof || !amountPayingInput || parseFloat(amountPayingInput) <= 0} 
+                disabled={isSubmittingProof || !amountPayingInput || parseFloat(amountPayingInput) <= 0 || !senderNameInput.trim()} 
                 className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
               >
-                {isSubmittingProof ? "Submitting Proof..." : "Confirm Payment & Submit Proof"}
+                {isSubmittingProof ? "Submitting..." : "Confirm Payment Information"}
               </Button>
             </CardContent>
           </Card>
@@ -322,7 +310,7 @@ export default function RegisterPage() {
   if (registrationStep === 'submitted') {
     return (
       <div>
-        <PageHeader title="Registration & Payment Submitted" />
+        <PageHeader title="Registration & Payment Info Submitted" />
         <div className="container mx-auto py-16 text-center">
           <Card className="max-w-lg mx-auto shadow-xl">
             <CardHeader>
@@ -331,7 +319,7 @@ export default function RegisterPage() {
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground mb-6">
-                Your registration and payment proof have been successfully submitted. We will review your payment and get in touch with you soon regarding the next steps.
+                Your registration and payment information have been successfully submitted. We will review your payment and get in touch with you soon regarding the next steps.
               </p>
               <Button onClick={startNewRegistration}>Register Another Student</Button>
             </CardContent>

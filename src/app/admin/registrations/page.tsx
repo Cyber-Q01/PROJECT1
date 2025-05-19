@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ArrowLeft, ArrowUpDown, Filter, XCircle, Download } from "lucide-react";
+import { LogOut, ArrowLeft, ArrowUpDown, XCircle, Download } from "lucide-react"; // Removed Filter
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { format } from 'date-fns';
 
 interface Student {
-  id: string; // MongoDB _id
+  id: string; 
   fullName: string;
   email: string;
   phone: string;
@@ -27,7 +27,7 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: Date;
   amountDue: number; 
-  paymentReceiptUrl?: string | null;
+  senderName?: string | null; // Changed from paymentReceiptUrl
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -87,7 +87,7 @@ export default function RegistrationManagementPage() {
       }
       const data = await response.json();
       const loadedStudentsData: Student[] = data.students.map((s: any) => ({
-        id: s._id || s.id, // Use _id from MongoDB
+        id: s._id || s.id, 
         fullName: s.fullName || 'N/A',
         email: s.email || 'N/A',
         phone: s.phone || 'N/A',
@@ -97,7 +97,7 @@ export default function RegistrationManagementPage() {
         classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
         registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
-        paymentReceiptUrl: s.paymentReceiptUrl || null,
+        senderName: s.senderName || null, // Changed
         paymentStatus: s.paymentStatus || 'pending_payment',
       }));
       setAllStudents(loadedStudentsData);
@@ -220,7 +220,7 @@ export default function RegistrationManagementPage() {
 
     filteredAndSortedStudents.forEach(student => {
       const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s)?.label || s).join('; ');
-      const paymentStatusText = student.paymentStatus.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const paymentStatusText = student.paymentStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const classTimingText = student.classTiming.charAt(0).toUpperCase() + student.classTiming.slice(1);
       
       const row = [
@@ -380,7 +380,7 @@ export default function RegistrationManagementPage() {
                         <TableCell>{student.amountDue.toLocaleString()}</TableCell>
                         <TableCell>
                           <Badge variant={getPaymentStatusBadgeVariant(student.paymentStatus)} className="capitalize">
-                            {student.paymentStatus.replace('_', ' ')}
+                            {student.paymentStatus.replace(/_/g, ' ')}
                           </Badge>
                         </TableCell>
                         <TableCell>{student.registrationDate ? format(student.registrationDate, 'dd MMM yyyy, hh:mm a') : 'N/A'}</TableCell>
