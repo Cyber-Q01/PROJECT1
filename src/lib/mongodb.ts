@@ -7,35 +7,52 @@ if (!process.env.MONGODB_URI) {
 }
 
 const uri = process.env.MONGODB_URI;
+console.log(`[MongoDB] Attempting to connect with MONGODB_URI: ${uri}`); // Added log
+
 const options = {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
   },
+  // Optional: Add server selection timeout to potentially get more specific errors
+  // serverSelectionTimeoutMS: 5000, // 5 seconds
 };
 
 let client: MongoClient;
 let clientPromise: Promise<MongoClient>;
 
 if (process.env.NODE_ENV === 'development') {
-  // In development mode, use a global variable so that the value
-  // is preserved across module reloads caused by HMR (Hot Module Replacement).
   let globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>
   }
 
   if (!globalWithMongo._mongoClientPromise) {
     client = new MongoClient(uri, options);
-    globalWithMongo._mongoClientPromise = client.connect();
+    console.log('[MongoDB] Creating new client and connection promise in development.');
+    globalWithMongo._mongoClientPromise = client.connect()
+      .then(client => {
+        console.log('[MongoDB] Successfully connected to MongoDB in development (global promise).');
+        return client;
+      })
+      .catch(err => {
+        console.error('[MongoDB] Failed to connect to MongoDB in development (global promise):', err);
+        throw err; // Re-throw to ensure promise rejects
+      });
   }
   clientPromise = globalWithMongo._mongoClientPromise;
 } else {
-  // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+  console.log('[MongoDB] Creating new client and connection promise in production.');
+  clientPromise = client.connect()
+    .then(client => {
+      console.log('[MongoDB] Successfully connected to MongoDB in production.');
+      return client;
+    })
+    .catch(err => {
+      console.error('[MongoDB] Failed to connect to MongoDB in production:', err);
+      throw err; // Re-throw to ensure promise rejects
+    });
 }
 
-// Export a module-scoped MongoClient promise. By doing this in a
-// separate module, the client can be shared across functions.
 export default clientPromise;
