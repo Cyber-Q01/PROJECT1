@@ -7,7 +7,7 @@ import { ObjectId } from 'mongodb';
 
 interface Student {
   _id?: ObjectId;
-  id?: string; 
+  id?: string;
   fullName: string;
   email: string;
   phone: string;
@@ -33,7 +33,7 @@ export async function PATCH(
 
     if (!ObjectId.isValid(studentId)) {
       console.error(`[API Students PATCH /${studentId}] Invalid student ID format.`);
-      return NextResponse.json({ error: 'Invalid student ID format' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid student ID format', details: `The provided ID '${studentId}' is not a valid MongoDB ObjectId.` }, { status: 400 });
     }
 
     const updateFields: Partial<Pick<Student, 'paymentStatus' | 'senderName' | 'amountDue'>> = {};
@@ -41,7 +41,7 @@ export async function PATCH(
     if (paymentStatus) {
       if (!['pending_payment', 'pending_verification', 'approved', 'rejected'].includes(paymentStatus)) {
         console.error(`[API Students PATCH /${studentId}] Invalid payment status provided: ${paymentStatus}`);
-        return NextResponse.json({ error: 'Invalid payment status.' }, { status: 400 });
+        return NextResponse.json({ error: 'Invalid payment status.', details: `Status '${paymentStatus}' is not allowed.` }, { status: 400 });
       }
       updateFields.paymentStatus = paymentStatus as Student['paymentStatus'];
     }
@@ -64,7 +64,7 @@ export async function PATCH(
     const db = client.db("firstClassTutorials");
     const studentsCollection = db.collection<Student>("students");
 
-    console.log(`[API Students PATCH /${studentId}] Attempting to update student with fields:`, updateFields);
+    console.log(`[API Students PATCH /${studentId}] Attempting to update student with ID '${studentId}' using fields:`, updateFields);
     const result = await studentsCollection.findOneAndUpdate(
       { _id: new ObjectId(studentId) },
       { $set: updateFields },
@@ -72,22 +72,22 @@ export async function PATCH(
     );
 
     if (!result || !result.value) { 
-      console.warn(`[API Students PATCH /${studentId}] Student not found for update or update operation failed.`);
-      return NextResponse.json({ error: 'Student not found or update failed' }, { status: 404 });
+      console.warn(`[API Students PATCH /${studentId}] Student not found for ID: '${studentId}'. Update operation failed.`);
+      // Return the ID it tried to find in the error message
+      return NextResponse.json({ error: `Student not found with ID: ${studentId}`, details: `No student record matches the ID '${studentId}'.` }, { status: 404 });
     }
     
     const updatedStudentDoc = result.value;
-    // Ensure all fields are correctly mapped, especially if the document structure might vary
     const updatedStudentResponse = {
       id: updatedStudentDoc._id.toString(),
       fullName: updatedStudentDoc.fullName,
       email: updatedStudentDoc.email,
       phone: updatedStudentDoc.phone,
       address: updatedStudentDoc.address,
-      dateOfBirth: updatedStudentDoc.dateOfBirth, // ensure this is a string if needed by frontend
+      dateOfBirth: updatedStudentDoc.dateOfBirth,
       selectedSubjects: updatedStudentDoc.selectedSubjects,
       classTiming: updatedStudentDoc.classTiming,
-      registrationDate: updatedStudentDoc.registrationDate, // ensure this is a string if needed
+      registrationDate: updatedStudentDoc.registrationDate,
       amountDue: updatedStudentDoc.amountDue,
       senderName: updatedStudentDoc.senderName,
       paymentStatus: updatedStudentDoc.paymentStatus,
@@ -97,8 +97,8 @@ export async function PATCH(
     return NextResponse.json({ message: 'Student record updated successfully', studentId, updatedStudent: updatedStudentResponse }, { status: 200 });
 
   } catch (e) {
-    console.error(`[API Students PATCH /${params.id}] Error updating student record:`, e);
     const error = e as Error & { code?: string };
+    console.error(`[API Students PATCH /${params.id}] Error updating student record:`, error.message, error.stack, error);
     return NextResponse.json({
       error: 'Failed to update student record',
       details: error.message || 'Unknown server error',

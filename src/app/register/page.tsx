@@ -56,9 +56,24 @@ export default function RegisterPage() {
   const [senderNameInput, setSenderNameInput] = useState<string>("");
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
+  
+  // State for calendar props, initialized after client mount
+  const [calendarProps, setCalendarProps] = useState<{
+    calendarToYear: number;
+    maxBirthDate: Date;
+    minBirthDate: Date;
+  } | null>(null);
 
   useEffect(() => {
     setIsClient(true);
+    const today = new Date();
+    const fiveYearsAgo = subYears(today, 5);
+    const minBirthDateInstance = new Date("1950-01-01");
+    setCalendarProps({
+      calendarToYear: fiveYearsAgo.getFullYear(),
+      maxBirthDate: fiveYearsAgo,
+      minBirthDate: minBirthDateInstance,
+    });
   }, []);
 
   const {
@@ -87,12 +102,14 @@ export default function RegisterPage() {
       ...data,
       dateOfBirth: data.dateOfBirth.toISOString(),
       registrationDate: new Date().toISOString(),
-      amountDue: 0,
+      amountDue: 0, // Initial amount due is 0, student specifies amount paid later
       paymentStatus: 'pending_payment' as const,
-      senderName: null,
+      senderName: null, // Sender name will be collected in the payment step
     };
+    
+    // Remove 'id' if present from studentDataToSubmit as API will generate it
+    const { id: formId, ...apiPayload } = { ...studentDataToSubmit, id: "" };
 
-    const { id, ...apiPayload } = { ...studentDataToSubmit, id: "" };
 
     try {
       console.log('[Registration] Submitting student data to API:', apiPayload);
@@ -118,7 +135,7 @@ export default function RegisterPage() {
 
       const newRegistrationDataForState: StoredStudentData = {
         ...data,
-        id: result.studentId,
+        id: result.studentId, // Use the ID from the API response
         dateOfBirth: data.dateOfBirth.toISOString(),
         registrationDate: studentDataToSubmit.registrationDate,
         amountDue: studentDataToSubmit.amountDue,
@@ -128,9 +145,9 @@ export default function RegisterPage() {
 
       setCurrentRegistrant(newRegistrationDataForState);
       setRegistrationStep('payment');
-      setAmountPayingInput("");
-      setSenderNameInput("");
-      reset();
+      setAmountPayingInput(""); // Reset for payment step
+      setSenderNameInput(""); // Reset for payment step
+      reset(); // Reset the form fields
       window.scrollTo(0, 0);
       toast({
           title: "Registration Successful!",
@@ -152,16 +169,17 @@ export default function RegisterPage() {
     if (!isClient || !currentRegistrant ) {
       toast({
         title: "Submission Error",
-        description: "No registration data found.",
+        description: "No registration data found. Please start over.",
         variant: "destructive",
       });
+      setRegistrationStep('form'); // Reset to form if no registrant data
       return;
     }
     const paidAmount = parseFloat(amountPayingInput);
     if (isNaN(paidAmount) || paidAmount <= 0) {
       toast({
         title: "Invalid Amount",
-        description: "Please enter a valid positive amount.",
+        description: "Please enter a valid positive amount paid.",
         variant: "destructive",
       });
       return;
@@ -178,23 +196,26 @@ export default function RegisterPage() {
     setIsSubmittingProof(true);
     try {
       const payload = {
-        amountDue: paidAmount,
+        amountDue: paidAmount, // This is the amount student claims they paid
         senderName: senderNameInput.trim(),
         paymentStatus: 'pending_verification' as const,
       };
+      
+      // Log the ID being sent to the API
+      console.log(`[PaymentProof] Submitting payment info for student ID: ${currentRegistrant.id}`, payload);
 
-      console.log(`[Payment] Submitting payment info for student ${currentRegistrant.id}:`, payload);
       const response = await fetch(`/api/students/${currentRegistrant.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
-      console.log('[Payment] API Response:', result);
+      const result = await response.json(); // Attempt to parse JSON regardless of response.ok
+      console.log('[PaymentProof] API Response:', result);
 
       if (!response.ok) {
-        throw new Error(result.details || result.error || "Failed to submit payment information to server.");
+        // Use details from API response if available, otherwise use a generic message
+        throw new Error(result.details || result.error || `Server error: ${response.status}. Failed to submit payment information.`);
       }
 
       toast({
@@ -202,15 +223,15 @@ export default function RegisterPage() {
         description: `Your payment information (Amount: ₦${paidAmount.toLocaleString()}, Sender: ${senderNameInput}) has been submitted. We will verify it shortly.`,
       });
       setRegistrationStep('submitted');
-      setCurrentRegistrant(null);
+      setCurrentRegistrant(null); // Clear current registrant after successful submission
       setAmountPayingInput("");
       setSenderNameInput("");
       window.scrollTo(0, 0);
     } catch (error: any) {
-      console.error("[Payment] Failed to submit payment proof", error);
+      console.error("[PaymentProof] Failed to submit payment proof", error);
       toast({
-        title: "Submission Failed",
-        description: error.message || "Could not submit your payment information. Please try again.",
+        title: "Payment Submission Failed",
+        description: error.message || "Could not submit your payment information. Please try again or contact support.",
         variant: "destructive",
       });
     } finally {
@@ -226,20 +247,8 @@ export default function RegisterPage() {
     reset();
   }
 
-  // Derived properties for Calendar, calculated only on client-side
-  let derivedCalendarProps = null;
-  if (isClient) {
-    const today = new Date();
-    const fiveYearsAgo = subYears(today, 5);
-    const minBirthDateInstance = new Date("1950-01-01");
-    derivedCalendarProps = {
-      calendarToYear: fiveYearsAgo.getFullYear(),
-      maxBirthDate: fiveYearsAgo,
-      minBirthDate: minBirthDateInstance,
-    };
-  }
 
-  if (!isClient && registrationStep === 'form') { // Show basic loading for the form itself if not client yet
+  if (!isClient) {
     return (
         <div>
             <PageHeader
@@ -260,7 +269,7 @@ export default function RegisterPage() {
           <Card className="max-w-xl mx-auto shadow-xl">
             <CardHeader>
               <CardTitle className="text-xl text-primary">Step 2: Make Payment & Confirm</CardTitle>
-              <CardDescription>Hi {currentRegistrant?.fullName}, please proceed with payment.</CardDescription>
+              <CardDescription>Hi {currentRegistrant?.fullName || "Student"}, please proceed with payment.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
                <Alert variant="default" className="bg-blue-50 border-blue-200">
@@ -273,12 +282,12 @@ export default function RegisterPage() {
                     <li><strong>Account Number:</strong> 123456789</li>
                     <li><strong>Bank:</strong> Opay</li>
                   </ul>
-                   Ensure the narration includes your full name. After payment, enter the amount paid and the sender's name below.
+                   After payment, enter the amount paid and the sender's name below.
                 </AlertDescription>
               </Alert>
 
               <div>
-                <Label htmlFor="amountPaying">Amount Paying (₦)</Label>
+                <Label htmlFor="amountPaying">Amount Paid (₦)</Label>
                 <Input
                   id="amountPaying"
                   type="number"
@@ -382,7 +391,7 @@ export default function RegisterPage() {
 
               <div>
                 <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                <Controller
+                 <Controller
                   control={control}
                   name="dateOfBirth"
                   render={({ field }) => (
@@ -394,26 +403,26 @@ export default function RegisterPage() {
                             "w-full justify-start text-left font-normal mt-1",
                             !field.value && "text-muted-foreground"
                           )}
-                          disabled={!isClient || !derivedCalendarProps}
+                          disabled={!calendarProps} // Disable if calendarProps not ready
                         >
                           <CalendarIconLucide className="mr-2 h-4 w-4" />
                           {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        {isClient && derivedCalendarProps && (
+                        {calendarProps && ( // Render calendar only if props are ready
                           <Calendar
                             mode="single"
                             selected={field.value}
                             onSelect={(date) => field.onChange(date)}
                             initialFocus
                             captionLayout="dropdown-buttons"
-                            fromYear={derivedCalendarProps.minBirthDate.getFullYear()}
-                            toYear={derivedCalendarProps.calendarToYear}
-                            fromDate={derivedCalendarProps.minBirthDate}
-                            toDate={derivedCalendarProps.maxBirthDate}
+                            fromYear={calendarProps.minBirthDate.getFullYear()}
+                            toYear={calendarProps.calendarToYear}
+                            fromDate={calendarProps.minBirthDate}
+                            toDate={calendarProps.maxBirthDate}
                             disabled={(date) =>
-                              date > derivedCalendarProps.maxBirthDate || date < derivedCalendarProps.minBirthDate
+                              date > calendarProps.maxBirthDate || date < calendarProps.minBirthDate
                             }
                           />
                         )}
@@ -468,7 +477,7 @@ export default function RegisterPage() {
                 {errors.classTiming && <p className="text-sm text-destructive mt-1">{errors.classTiming.message}</p>}
               </div>
 
-              <Button type="submit" disabled={isSubmittingForm} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+              <Button type="submit" disabled={isSubmittingForm || !calendarProps} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
                 {isSubmittingForm ? "Submitting..." : "Proceed to Payment"}
               </Button>
             </form>
