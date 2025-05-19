@@ -4,6 +4,7 @@ import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import { addMonths, formatISO } from 'date-fns';
 
 interface Student {
   _id?: ObjectId;
@@ -19,6 +20,8 @@ interface Student {
   amountDue: number;
   senderName?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
+  lastPaymentDate?: string | null;
+  nextPaymentDueDate?: string | null;
 }
 
 export async function PATCH(
@@ -27,16 +30,16 @@ export async function PATCH(
 ) {
   try {
     const studentId = params.id;
-    const { paymentStatus, senderName, amountDue } = await request.json();
+    const { paymentStatus, senderName, amountDue, isMonthlyRenewal } = await request.json();
 
-    console.log(`[API Students PATCH /${studentId}] Received update request. Status: ${paymentStatus}, Sender: ${senderName}, Amount: ${amountDue}`);
+    console.log(`[API Students PATCH /${studentId}] Received update request. Status: ${paymentStatus}, Sender: ${senderName}, Amount: ${amountDue}, MonthlyRenewal: ${isMonthlyRenewal}`);
 
     if (!ObjectId.isValid(studentId)) {
       console.error(`[API Students PATCH /${studentId}] Invalid student ID format.`);
       return NextResponse.json({ error: 'Invalid student ID format', details: `The provided ID '${studentId}' is not a valid MongoDB ObjectId.` }, { status: 400 });
     }
 
-    const updateFields: Partial<Pick<Student, 'paymentStatus' | 'senderName' | 'amountDue'>> = {};
+    const updateFields: Partial<Student> = {};
 
     if (paymentStatus) {
       if (!['pending_payment', 'pending_verification', 'approved', 'rejected'].includes(paymentStatus)) {
@@ -51,6 +54,19 @@ export async function PATCH(
     }
     if (amountDue !== undefined && typeof amountDue === 'number') {
         updateFields.amountDue = amountDue;
+    }
+
+    const currentDate = new Date();
+    if (isMonthlyRenewal && amountDue === 8000) { // Admin recording a monthly payment
+        updateFields.paymentStatus = 'approved';
+        updateFields.lastPaymentDate = formatISO(currentDate);
+        updateFields.nextPaymentDueDate = formatISO(addMonths(currentDate, 1));
+        updateFields.amountDue = 8000; // Confirming the standard monthly amount
+        updateFields.senderName = senderName || "Admin Recorded - Monthly"; // Or some other indicator
+    } else if (paymentStatus === 'approved' && !isMonthlyRenewal) { // Initial payment approval
+        updateFields.lastPaymentDate = formatISO(currentDate);
+        updateFields.nextPaymentDueDate = formatISO(addMonths(currentDate, 1));
+        // Keep student-submitted amountDue and senderName for the first payment
     }
     
     if (Object.keys(updateFields).length === 0) {
@@ -73,24 +89,13 @@ export async function PATCH(
 
     if (!result || !result.value) { 
       console.warn(`[API Students PATCH /${studentId}] Student not found for ID: '${studentId}'. Update operation failed.`);
-      // Return the ID it tried to find in the error message
       return NextResponse.json({ error: `Student not found with ID: ${studentId}`, details: `No student record matches the ID '${studentId}'.` }, { status: 404 });
     }
     
     const updatedStudentDoc = result.value;
-    const updatedStudentResponse = {
+     const updatedStudentResponse = {
+      ...updatedStudentDoc,
       id: updatedStudentDoc._id.toString(),
-      fullName: updatedStudentDoc.fullName,
-      email: updatedStudentDoc.email,
-      phone: updatedStudentDoc.phone,
-      address: updatedStudentDoc.address,
-      dateOfBirth: updatedStudentDoc.dateOfBirth,
-      selectedSubjects: updatedStudentDoc.selectedSubjects,
-      classTiming: updatedStudentDoc.classTiming,
-      registrationDate: updatedStudentDoc.registrationDate,
-      amountDue: updatedStudentDoc.amountDue,
-      senderName: updatedStudentDoc.senderName,
-      paymentStatus: updatedStudentDoc.paymentStatus,
     };
     
     console.log(`[API Students PATCH /${studentId}] Student record updated successfully. New data:`, updatedStudentResponse);

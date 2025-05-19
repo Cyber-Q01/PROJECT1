@@ -9,12 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ArrowLeft, ArrowUpDown, XCircle, Download, Edit3, AlertTriangle } from "lucide-react"; 
+import { LogOut, ArrowLeft, ArrowUpDown, XCircle, Download, Edit3, AlertTriangle, CalendarClock } from "lucide-react"; 
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -24,13 +24,15 @@ interface Student {
   email: string;
   phone: string;
   address: string;
-  dateOfBirth: Date;
+  dateOfBirth: Date; // Changed to Date
   selectedSubjects: string[];
   classTiming: 'morning' | 'afternoon';
-  registrationDate: Date;
+  registrationDate: Date; // Changed to Date
   amountDue: number; 
   senderName?: string | null; 
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
+  lastPaymentDate?: string | null; // ISO string
+  nextPaymentDueDate?: string | null; // ISO string
 }
 
 const programFiltersData = [
@@ -53,7 +55,7 @@ const paymentAmountFiltersData = [
   { id: "equal_to_8000", label: "Full Payment (₦8000)" },
 ];
 
-type SortableStudentKeys = keyof Pick<Student, 'fullName' | 'email' | 'phone' | 'classTiming' | 'paymentStatus' | 'registrationDate' | 'amountDue' | 'dateOfBirth'> | 'selectedSubjects';
+type SortableStudentKeys = keyof Pick<Student, 'fullName' | 'email' | 'phone' | 'classTiming' | 'paymentStatus' | 'registrationDate' | 'amountDue' | 'dateOfBirth' | 'lastPaymentDate' | 'nextPaymentDueDate'> | 'selectedSubjects';
 
 
 export default function RegistrationManagementPage() {
@@ -75,6 +77,8 @@ export default function RegistrationManagementPage() {
   const [dialogAmountPaid, setDialogAmountPaid] = useState<string>("");
   const [dialogSenderName, setDialogSenderName] = useState<string>("");
   const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+
+  const [isMonthlyRenewalDialogOpem, setIsMonthlyRenewalDialogOpem] = useState(false);
 
 
   useEffect(() => {
@@ -107,6 +111,8 @@ export default function RegistrationManagementPage() {
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
         senderName: s.senderName || null, 
         paymentStatus: s.paymentStatus || 'pending_payment',
+        lastPaymentDate: s.lastPaymentDate || null,
+        nextPaymentDueDate: s.nextPaymentDueDate || null,
       }));
       setAllStudents(loadedStudentsData);
     } catch (error: any)
@@ -158,8 +164,20 @@ export default function RegistrationManagementPage() {
     let sortableStudents = [...allStudents];
     if (sortConfig.key !== null) {
       sortableStudents.sort((a, b) => {
-        const aValue = a[sortConfig.key!];
-        const bValue = b[sortConfig.key!];
+        let aValue = a[sortConfig.key!];
+        let bValue = b[sortConfig.key!];
+
+        if (sortConfig.key === 'lastPaymentDate' || sortConfig.key === 'nextPaymentDueDate') {
+          // Handle null or invalid dates by pushing them to the end or beginning
+          const aDate = aValue ? parseISO(aValue as string) : null;
+          const bDate = bValue ? parseISO(bValue as string) : null;
+          if (!aDate && !bDate) return 0;
+          if (!aDate) return sortConfig.direction === 'ascending' ? 1 : -1; // nulls last for ascending
+          if (!bDate) return sortConfig.direction === 'ascending' ? -1 : 1; // nulls last for ascending
+          aValue = aDate;
+          bValue = bDate;
+        }
+
 
         if (sortConfig.key === 'selectedSubjects') {
           const aSubjects = (aValue as string[]).join(', ');
@@ -222,7 +240,8 @@ export default function RegistrationManagementPage() {
 
     const headers = [
       'Full Name', 'Email', 'Phone', 'Date of Birth', 'Program(s)', 
-      'Class Timing', 'Amount Paid (₦)', 'Payment Status', 'Date Joined'
+      'Class Timing', 'Amount Paid (₦)', 'Payment Status', 'Date Joined',
+      'Last Payment Date', 'Next Payment Due Date'
     ];
 
     const csvRows = [headers.join(',')];
@@ -231,6 +250,8 @@ export default function RegistrationManagementPage() {
       const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s && p.id !== "all")?.label || s).join('; ');
       const paymentStatusText = student.paymentStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const classTimingText = student.classTiming.charAt(0).toUpperCase() + student.classTiming.slice(1);
+      const lastPaymentDateText = student.lastPaymentDate ? format(parseISO(student.lastPaymentDate), 'yyyy-MM-dd') : 'N/A';
+      const nextPaymentDueDateText = student.nextPaymentDueDate ? format(parseISO(student.nextPaymentDueDate), 'yyyy-MM-dd') : 'N/A';
       
       const row = [
         `"${student.fullName}"`,
@@ -239,9 +260,11 @@ export default function RegistrationManagementPage() {
         student.dateOfBirth ? `"${format(student.dateOfBirth, 'yyyy-MM-dd')}"` : 'N/A',
         `"${programs}"`,
         `"${classTimingText}"`,
-        student.amountDue.toString(),
+        student.amountDue.toLocaleString(),
         `"${paymentStatusText}"`,
         student.registrationDate ? `"${format(student.registrationDate, 'yyyy-MM-dd HH:mm')}"` : 'N/A',
+        `"${lastPaymentDateText}"`,
+        `"${nextPaymentDueDateText}"`,
       ];
       csvRows.push(row.join(','));
     });
@@ -264,9 +287,9 @@ export default function RegistrationManagementPage() {
     }
   };
 
-  const handleOpenPaymentDialog = (student: Student) => {
+  const openPaymentDetailsDialog = (student: Student) => {
     setCurrentStudentForDialog(student);
-    setDialogAmountPaid(student.amountDue > 0 ? student.amountDue.toString() : "");
+    setDialogAmountPaid(student.amountDue > 0 ? student.amountDue.toString() : ""); // Default to current amount if exists
     setDialogSenderName(student.senderName || "");
     setIsPaymentDialogOpem(true);
   };
@@ -288,7 +311,7 @@ export default function RegistrationManagementPage() {
       });
       const result = await response.json();
 
-      if (!response.ok) {
+      if (!response.ok || !result.updatedStudent) {
         throw new Error(result.details || result.error || `Failed to update payment details: ${response.statusText}`);
       }
 
@@ -300,10 +323,10 @@ export default function RegistrationManagementPage() {
         title: "Payment Details Submitted",
         description: `Student payment information successfully submitted for verification.`,
       });
-      setIsPaymentDialogOpem(false); // Close dialog
-      setCurrentStudentForDialog(null); // Reset student in dialog
-      setDialogAmountPaid(""); // Reset dialog field
-      setDialogSenderName(""); // Reset dialog field
+      setIsPaymentDialogOpem(false); 
+      setCurrentStudentForDialog(null); 
+      setDialogAmountPaid(""); 
+      setDialogSenderName(""); 
 
     } catch (error: any) {
       console.error("Error updating payment details:", error);
@@ -329,6 +352,40 @@ export default function RegistrationManagementPage() {
       return;
     }
     submitPaymentDetailsForStudent(currentStudentForDialog.id, amount, dialogSenderName.trim());
+  };
+  
+  const openMonthlyRenewalDialog = (student: Student) => {
+    setCurrentStudentForDialog(student);
+    setIsMonthlyRenewalDialogOpem(true);
+  };
+
+  const handleRecordMonthlyPayment = async () => {
+    if (!currentStudentForDialog) return;
+    setIsUpdatingPayment(true);
+    try {
+      const payload = {
+        isMonthlyRenewal: true,
+        amountDue: 8000, // Standard monthly fee
+        // senderName could be set to "Admin Recorded - Monthly" by the API
+      };
+      const response = await fetch(`/api/students/${currentStudentForDialog.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.updatedStudent) {
+        throw new Error(result.details || result.error || `Failed to record monthly payment.`);
+      }
+      setAllStudents(prev => prev.map(s => s.id === currentStudentForDialog.id ? { ...s, ...result.updatedStudent } : s));
+      toast({ title: "Monthly Payment Recorded", description: `₦8000 payment recorded for ${currentStudentForDialog.fullName}.` });
+      setIsMonthlyRenewalDialogOpem(false);
+      setCurrentStudentForDialog(null);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setIsUpdatingPayment(false);
+    }
   };
 
 
@@ -370,7 +427,7 @@ export default function RegistrationManagementPage() {
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="text-primary text-xl">Student Roster</CardTitle>
-            <CardDescription>View, filter, and sort registered students. You can also add payment details for students who paid via other means.</CardDescription>
+            <CardDescription>View, filter, and sort registered students. You can also add payment details or record monthly renewals.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
@@ -434,9 +491,11 @@ export default function RegistrationManagementPage() {
                         { key: 'dateOfBirth', label: 'Date of Birth' },
                         { key: 'selectedSubjects', label: 'Program(s)' },
                         { key: 'classTiming', label: 'Class Timing' },
-                        { key: 'amountDue', label: 'Amount Paid (₦)' },
+                        { key: 'amountDue', label: 'Last Paid (₦)' },
                         { key: 'paymentStatus', label: 'Payment Status' },
                         { key: 'registrationDate', label: 'Date Joined' },
+                        { key: 'lastPaymentDate', label: 'Last Payment Date' },
+                        { key: 'nextPaymentDueDate', label: 'Next Due Date' },
                       ] as { key: SortableStudentKeys; label: string }[]).map(col => (
                         <TableHead key={col.key} onClick={() => requestSort(col.key)} className="cursor-pointer hover:bg-muted/80 transition-colors">
                           {col.label}{getSortIndicator(col.key)}
@@ -461,19 +520,33 @@ export default function RegistrationManagementPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>{student.registrationDate ? format(student.registrationDate, 'dd MMM yyyy, hh:mm a') : 'N/A'}</TableCell>
-                        <TableCell className="text-center">
+                        <TableCell>{student.lastPaymentDate ? format(parseISO(student.lastPaymentDate), 'dd MMM yyyy') : 'N/A'}</TableCell>
+                        <TableCell>{student.nextPaymentDueDate ? format(parseISO(student.nextPaymentDueDate), 'dd MMM yyyy') : 'N/A'}</TableCell>
+                        <TableCell className="text-center space-y-1">
                           {student.paymentStatus === 'pending_payment' && (
                              <Button 
                                 size="sm" 
                                 variant="outline" 
-                                onClick={() => handleOpenPaymentDialog(student)}
+                                onClick={() => openPaymentDetailsDialog(student)}
                                 disabled={isUpdatingPayment}
+                                className="w-full"
                               >
                                 <Edit3 className="mr-1 h-4 w-4" /> Add Details
                               </Button>
                           )}
-                          {(student.paymentStatus === 'approved' || student.paymentStatus === 'rejected' || student.paymentStatus === 'pending_verification') && (
-                             <span className="text-xs text-muted-foreground">No actions</span>
+                          {student.paymentStatus === 'approved' && (
+                             <Button 
+                                size="sm" 
+                                variant="default" 
+                                onClick={() => openMonthlyRenewalDialog(student)}
+                                disabled={isUpdatingPayment}
+                                className="w-full bg-green-600 hover:bg-green-700"
+                              >
+                                <CalendarClock className="mr-1 h-4 w-4" /> Record Monthly
+                              </Button>
+                          )}
+                          {(student.paymentStatus === 'rejected' || student.paymentStatus === 'pending_verification') && (
+                             <span className="text-xs text-muted-foreground">No direct actions</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -488,6 +561,7 @@ export default function RegistrationManagementPage() {
           </CardContent>
         </Card>
 
+        {/* Dialog for Adding Payment Details (for pending_payment) */}
         <Dialog open={isPaymentDialogOpem} onOpenChange={(isOpen) => { setIsPaymentDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
             <DialogContent>
                 <DialogHeader>
@@ -537,9 +611,37 @@ export default function RegistrationManagementPage() {
             </DialogContent>
         </Dialog>
 
+        {/* Dialog for Recording Monthly Payment Renewal */}
+        <Dialog open={isMonthlyRenewalDialogOpem} onOpenChange={(isOpen) => { setIsMonthlyRenewalDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Record Monthly Payment for {currentStudentForDialog?.fullName}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                           You are about to record a monthly payment of ₦8000 for this student. This will update their last payment date and next due date.
+                        </AlertDescription>
+                    </Alert>
+                     <p>Current Next Due Date: {currentStudentForDialog?.nextPaymentDueDate ? format(parseISO(currentStudentForDialog.nextPaymentDueDate), 'dd MMM yyyy') : 'N/A'}</p>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button 
+                        onClick={handleRecordMonthlyPayment} 
+                        disabled={isUpdatingPayment}
+                        className="bg-green-600 hover:bg-green-700"
+                    >
+                        {isUpdatingPayment ? "Recording..." : "Confirm ₦8000 Payment"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
       </section>
     </div>
   );
 }
-
-    

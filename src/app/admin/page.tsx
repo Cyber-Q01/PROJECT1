@@ -10,6 +10,7 @@ import { LogOut, Users, Banknote as BanknoteIcon, FileText, Clock, ArrowRight, L
 import { useToast } from '@/hooks/use-toast';
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { format } from 'date-fns';
 
 const programFilters = [
   { id: "jamb", label: "JAMB" },
@@ -23,13 +24,15 @@ interface Student {
   email: string;
   phone: string;
   address: string;
-  dateOfBirth: Date;
+  dateOfBirth: Date; // Changed to Date
   selectedSubjects: string[]; 
   classTiming: 'morning' | 'afternoon';
-  registrationDate: Date; 
+  registrationDate: Date; // Changed to Date
   amountDue: number; 
   senderName?: string | null; 
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
+  lastPaymentDate?: string | null; // ISO string
+  nextPaymentDueDate?: string | null; // ISO string
 }
 
 interface StatCardProps {
@@ -95,6 +98,8 @@ export default function AdminDashboardPage() {
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0, 
         senderName: s.senderName || null, 
         paymentStatus: s.paymentStatus || 'pending_payment',
+        lastPaymentDate: s.lastPaymentDate || null,
+        nextPaymentDueDate: s.nextPaymentDueDate || null,
       }));
       setAllStudents(loadedStudentsData);
     } catch (error: any) {
@@ -140,9 +145,10 @@ export default function AdminDashboardPage() {
     }
 
     const totalStudents = allStudents.length;
+    // Revenue is based on all 'approved' payments. If monthly, this sums all recorded monthly payments.
     const totalRevenue = allStudents
-      .filter(s => s.paymentStatus === 'approved')
-      .reduce((sum, s) => sum + s.amountDue, 0);
+      .filter(s => s.paymentStatus === 'approved') 
+      .reduce((sum, s) => sum + s.amountDue, 0); // amountDue here reflects the last payment amount
     const totalRegistrations = totalStudents; 
     const pendingPayments = allStudents.filter(s => s.paymentStatus === 'pending_verification').length;
 
@@ -192,9 +198,10 @@ export default function AdminDashboardPage() {
                 icon={<Users className="h-5 w-5 text-primary" />}
               />
               <StatCard
-                title="TOTAL REVENUE"
+                title="TOTAL REVENUE (Last Payments)"
                 value={`₦${dashboardStats.totalRevenue.toLocaleString()}`}
                 icon={<BanknoteIcon className="h-5 w-5 text-green-500" />}
+                description="Based on last recorded payments for approved students."
               />
               <StatCard
                 title="REGISTRATIONS"
@@ -252,7 +259,7 @@ export default function AdminDashboardPage() {
                   <Button variant="outline" className="w-full h-16 text-base justify-between hover:bg-primary/5">
                     <span>
                       <CreditCard className="mr-3 h-6 w-6 inline-block text-primary" />
-                      Manage Payments
+                      Manage Payments & Renewals
                     </span>
                     <ArrowRight className="h-5 w-5" />
                   </Button>
@@ -265,5 +272,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
-    

@@ -17,7 +17,7 @@ import { CheckCircle2, Banknote, Calendar as CalendarIconLucide, User } from "lu
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format, subYears } from "date-fns";
+import { format, subYears, formatISO } from "date-fns";
 import { cn } from "@/lib/utils";
 
 const subjectsOffered = [
@@ -40,11 +40,13 @@ type RegistrationFormValues = z.infer<typeof registrationSchema>;
 
 interface StoredStudentData extends Omit<RegistrationFormValues, 'dateOfBirth'> {
   id: string;
-  dateOfBirth: string;
-  registrationDate: string;
+  dateOfBirth: string; // ISO string
+  registrationDate: string; // ISO string
   amountDue: number;
   senderName?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
+  lastPaymentDate?: string | null; // ISO string
+  nextPaymentDueDate?: string | null; // ISO string
 }
 
 
@@ -57,7 +59,6 @@ export default function RegisterPage() {
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
   
-  // State for calendar props, initialized after client mount
   const [calendarProps, setCalendarProps] = useState<{
     calendarToYear: number;
     maxBirthDate: Date;
@@ -68,13 +69,14 @@ export default function RegisterPage() {
     setIsClient(true);
     const today = new Date();
     const fiveYearsAgo = subYears(today, 5);
-    const minBirthDateInstance = new Date("1950-01-01");
+    const minBirthDateInstance = new Date("1950-01-01"); // Earliest selectable birth date
     setCalendarProps({
       calendarToYear: fiveYearsAgo.getFullYear(),
-      maxBirthDate: fiveYearsAgo,
+      maxBirthDate: fiveYearsAgo, // Latest selectable birth date (e.g., at least 5 years old)
       minBirthDate: minBirthDateInstance,
     });
   }, []);
+
 
   const {
     control,
@@ -100,16 +102,16 @@ export default function RegisterPage() {
 
     const studentDataToSubmit = {
       ...data,
-      dateOfBirth: data.dateOfBirth.toISOString(),
-      registrationDate: new Date().toISOString(),
-      amountDue: 0, // Initial amount due is 0, student specifies amount paid later
+      dateOfBirth: formatISO(data.dateOfBirth),
+      registrationDate: formatISO(new Date()),
+      amountDue: 0, 
       paymentStatus: 'pending_payment' as const,
-      senderName: null, // Sender name will be collected in the payment step
+      senderName: null,
+      lastPaymentDate: null,
+      nextPaymentDueDate: null,
     };
     
-    // Remove 'id' if present from studentDataToSubmit as API will generate it
-    const { id: formId, ...apiPayload } = { ...studentDataToSubmit, id: "" };
-
+    const { id: formId, ...apiPayload } = { ...studentDataToSubmit, id: "" }; // id is not needed for POST
 
     try {
       console.log('[Registration] Submitting student data to API:', apiPayload);
@@ -124,7 +126,7 @@ export default function RegisterPage() {
       const result = await response.json();
       console.log('[Registration] API Response:', result);
 
-      if (!response.ok) {
+      if (!response.ok || !result.student) {
         toast({
           title: "Registration Failed",
           description: result.details || result.error || "An unknown error occurred. Please try again or contact support.",
@@ -132,22 +134,31 @@ export default function RegisterPage() {
         });
         return;
       }
-
+      
+      // Ensure the student object from API has all necessary fields for StoredStudentData
       const newRegistrationDataForState: StoredStudentData = {
-        ...data,
-        id: result.studentId, // Use the ID from the API response
-        dateOfBirth: data.dateOfBirth.toISOString(),
-        registrationDate: studentDataToSubmit.registrationDate,
-        amountDue: studentDataToSubmit.amountDue,
-        paymentStatus: studentDataToSubmit.paymentStatus,
-        senderName: studentDataToSubmit.senderName,
+        id: result.student.id || result.student._id.toString(), // Use id from API
+        fullName: result.student.fullName,
+        email: result.student.email,
+        phone: result.student.phone,
+        address: result.student.address,
+        dateOfBirth: result.student.dateOfBirth, // Should be ISO string from API
+        selectedSubjects: result.student.selectedSubjects,
+        classTiming: result.student.classTiming,
+        registrationDate: result.student.registrationDate, // Should be ISO string from API
+        amountDue: result.student.amountDue,
+        paymentStatus: result.student.paymentStatus,
+        senderName: result.student.senderName,
+        lastPaymentDate: result.student.lastPaymentDate,
+        nextPaymentDueDate: result.student.nextPaymentDueDate,
       };
+
 
       setCurrentRegistrant(newRegistrationDataForState);
       setRegistrationStep('payment');
-      setAmountPayingInput(""); // Reset for payment step
-      setSenderNameInput(""); // Reset for payment step
-      reset(); // Reset the form fields
+      setAmountPayingInput(""); 
+      setSenderNameInput(""); 
+      reset(); 
       window.scrollTo(0, 0);
       toast({
           title: "Registration Successful!",
@@ -158,7 +169,7 @@ export default function RegisterPage() {
       console.error("[Registration] Failed to submit registration to API", error);
       toast({
         title: "Registration Error",
-        description: `Could not submit your registration: ${error?.message || 'Please check your connection and try again.'}. Details: ${error.details || ''}`,
+        description: `${error?.message || 'Please check your connection and try again.'}. Details: ${error.details || ''}`,
         variant: "destructive",
       });
     }
@@ -172,7 +183,7 @@ export default function RegisterPage() {
         description: "No registration data found. Please start over.",
         variant: "destructive",
       });
-      setRegistrationStep('form'); // Reset to form if no registrant data
+      setRegistrationStep('form');
       return;
     }
     const paidAmount = parseFloat(amountPayingInput);
@@ -196,12 +207,11 @@ export default function RegisterPage() {
     setIsSubmittingProof(true);
     try {
       const payload = {
-        amountDue: paidAmount, // This is the amount student claims they paid
+        amountDue: paidAmount,
         senderName: senderNameInput.trim(),
         paymentStatus: 'pending_verification' as const,
       };
       
-      // Log the ID being sent to the API
       console.log(`[PaymentProof] Submitting payment info for student ID: ${currentRegistrant.id}`, payload);
 
       const response = await fetch(`/api/students/${currentRegistrant.id}`, {
@@ -210,12 +220,11 @@ export default function RegisterPage() {
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json(); // Attempt to parse JSON regardless of response.ok
+      const result = await response.json();
       console.log('[PaymentProof] API Response:', result);
 
       if (!response.ok) {
-        // Use details from API response if available, otherwise use a generic message
-        throw new Error(result.details || result.error || `Server error: ${response.status}. Failed to submit payment information.`);
+        throw new Error(result.details || result.error || "Student not found or update failed.");
       }
 
       toast({
@@ -223,7 +232,7 @@ export default function RegisterPage() {
         description: `Your payment information (Amount: ₦${paidAmount.toLocaleString()}, Sender: ${senderNameInput}) has been submitted. We will verify it shortly.`,
       });
       setRegistrationStep('submitted');
-      setCurrentRegistrant(null); // Clear current registrant after successful submission
+      setCurrentRegistrant(null); 
       setAmountPayingInput("");
       setSenderNameInput("");
       window.scrollTo(0, 0);
@@ -403,14 +412,14 @@ export default function RegisterPage() {
                             "w-full justify-start text-left font-normal mt-1",
                             !field.value && "text-muted-foreground"
                           )}
-                          disabled={!calendarProps} // Disable if calendarProps not ready
+                          disabled={!calendarProps} 
                         >
                           <CalendarIconLucide className="mr-2 h-4 w-4" />
                           {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        {calendarProps && ( // Render calendar only if props are ready
+                        {calendarProps && ( 
                           <Calendar
                             mode="single"
                             selected={field.value}

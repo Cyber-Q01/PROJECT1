@@ -9,13 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ArrowLeft, CheckCircle, XCircle, Download as DownloadIcon, Edit3, AlertTriangle } from "lucide-react";
+import { LogOut, ArrowLeft, CheckCircle, XCircle, Download as DownloadIcon, Edit3, AlertTriangle, CalendarClock } from "lucide-react";
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { format } from 'date-fns';
+import { format, parseISO, isValid } from 'date-fns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Student {
@@ -24,13 +24,15 @@ interface Student {
   email: string;
   phone: string;
   address: string;
-  dateOfBirth: Date;
+  dateOfBirth: Date; // Changed to Date
   selectedSubjects: string[];
   classTiming: 'morning' | 'afternoon';
-  registrationDate: Date;
+  registrationDate: Date; // Changed to Date
   amountDue: number;
   senderName?: string | null; 
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
+  lastPaymentDate?: string | null; // ISO string
+  nextPaymentDueDate?: string | null; // ISO string
 }
 
 const programFiltersData = [
@@ -63,6 +65,8 @@ export default function PaymentManagementPage() {
   const [dialogAmountPaid, setDialogAmountPaid] = useState<string>("");
   const [dialogSenderName, setDialogSenderName] = useState<string>("");
 
+  const [isMonthlyRenewalDialogOpem, setIsMonthlyRenewalDialogOpem] = useState(false);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -94,6 +98,8 @@ export default function PaymentManagementPage() {
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
         senderName: s.senderName || null, 
         paymentStatus: s.paymentStatus || 'pending_payment',
+        lastPaymentDate: s.lastPaymentDate || null,
+        nextPaymentDueDate: s.nextPaymentDueDate || null,
       }));
       setAllStudents(loadedStudentsData);
     } catch (error: any) {
@@ -123,77 +129,88 @@ export default function PaymentManagementPage() {
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
 
-  const updatePaymentStatus = async (studentId: string, newStatus: Student['paymentStatus'], amount?: number, senderNameText?: string) => {
+  const updatePaymentGeneric = async (studentId: string, payload: any, successTitle: string, successDescription: string) => {
     if (!isClient) return;
     setIsUpdatingPayment(true);
     try {
-      const payload: Partial<Pick<Student, 'paymentStatus' | 'senderName' | 'amountDue'>> = { paymentStatus: newStatus };
-      if (amount !== undefined) payload.amountDue = amount;
-      if (senderNameText !== undefined) payload.senderName = senderNameText;
-
-
       const response = await fetch(`/api/students/${studentId}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-
       const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.details || result.error || `Failed to update status: ${response.statusText}`);
+      if (!response.ok || !result.updatedStudent) {
+        throw new Error(result.details || result.error || `Failed to update: ${response.statusText}`);
       }
-
       setAllStudents(prevStudents =>
         prevStudents.map(s => (s.id === studentId ? { ...s, ...result.updatedStudent } : s))
       );
-      
-      toast({
-        title: "Payment Status Updated",
-        description: `Student payment successfully processed.`,
-      });
-      
-      if(currentStudentForDialog?.id === studentId) {
-        setIsPaymentDialogOpem(false);
-        setCurrentStudentForDialog(null);
-        setDialogAmountPaid("");
-        setDialogSenderName("");
-      }
-
+      toast({ title: successTitle, description: successDescription });
+      return true;
     } catch (error: any) {
-      console.error("Error updating payment status:", error);
-      toast({
-        title: "Update Failed",
-        description: error.message || "Could not update payment status.",
-        variant: "destructive",
-      });
+      console.error("Error updating payment:", error);
+      toast({ title: "Update Failed", description: error.message, variant: "destructive" });
+      return false;
     } finally {
       setIsUpdatingPayment(false);
     }
   };
 
-  const handleOpenPaymentDialog = (student: Student) => {
+  const handleApprovePayment = (studentId: string) => {
+    updatePaymentGeneric(studentId, { paymentStatus: 'approved' }, "Payment Approved", "Student payment approved and dates updated.");
+  };
+
+  const handleRejectPayment = (studentId: string) => {
+    updatePaymentGeneric(studentId, { paymentStatus: 'rejected' }, "Payment Rejected", "Student payment has been rejected.");
+  };
+
+  const openAddDetailsDialog = (student: Student) => {
     setCurrentStudentForDialog(student);
     setDialogAmountPaid(student.amountDue > 0 ? student.amountDue.toString() : "");
     setDialogSenderName(student.senderName || "");
     setIsPaymentDialogOpem(true);
   };
 
-  const handleSubmitPaymentDialog = () => {
+  const handleSubmitAddDetailsDialog = async () => {
     if (!currentStudentForDialog) return;
-
     const amount = parseFloat(dialogAmountPaid);
     if (isNaN(amount) || amount <= 0) {
-      toast({ title: "Invalid Amount", description: "Please enter a valid amount paid.", variant: "destructive" });
-      return;
+      toast({ title: "Invalid Amount", description: "Please enter a valid amount.", variant: "destructive" }); return;
     }
     if (!dialogSenderName.trim()) {
-      toast({ title: "Sender Name Required", description: "Please enter the sender's name.", variant: "destructive" });
-      return;
+      toast({ title: "Sender Name Required", description: "Please enter sender's name.", variant: "destructive" }); return;
     }
-    updatePaymentStatus(currentStudentForDialog.id, 'pending_verification', amount, dialogSenderName.trim());
+    const success = await updatePaymentGeneric(
+      currentStudentForDialog.id,
+      { paymentStatus: 'pending_verification', amountDue: amount, senderName: dialogSenderName.trim() },
+      "Payment Details Submitted",
+      "Student payment details submitted for verification."
+    );
+    if (success) {
+      setIsPaymentDialogOpem(false);
+      setCurrentStudentForDialog(null);
+      setDialogAmountPaid("");
+      setDialogSenderName("");
+    }
+  };
+  
+  const openMonthlyRenewalDialog = (student: Student) => {
+    setCurrentStudentForDialog(student);
+    setIsMonthlyRenewalDialogOpem(true);
+  };
+
+  const handleRecordMonthlyPayment = async () => {
+    if (!currentStudentForDialog) return;
+    const success = await updatePaymentGeneric(
+      currentStudentForDialog.id,
+      { isMonthlyRenewal: true, amountDue: 8000 },
+      "Monthly Payment Recorded",
+      `₦8000 payment recorded for ${currentStudentForDialog.fullName}.`
+    );
+    if (success) {
+      setIsMonthlyRenewalDialogOpem(false);
+      setCurrentStudentForDialog(null);
+    }
   };
 
 
@@ -227,7 +244,11 @@ export default function PaymentManagementPage() {
         student.phone.includes(searchTerm);
       
       return matchesStatus && matchesSearchTerm && matchesPaymentMethod();
-    }).sort((a,b) => new Date(b.registrationDate).getTime() - new Date(a.registrationDate).getTime());
+    }).sort((a,b) => {
+      const dateA = a.lastPaymentDate ? parseISO(a.lastPaymentDate) : (a.registrationDate || new Date(0));
+      const dateB = b.lastPaymentDate ? parseISO(b.lastPaymentDate) : (b.registrationDate || new Date(0));
+      return dateB.getTime() - dateA.getTime();
+    });
   }, [allStudents, filterPaymentStatus, filterPaymentMethod, searchTerm]);
 
   const getPaymentStatusBadgeVariant = (status: Student['paymentStatus']) => {
@@ -247,23 +268,27 @@ export default function PaymentManagementPage() {
     }
 
     const headers = [
-      'Student Name', 'Email', 'Program(s)', 'Amount Paid (₦)', 'Sender Name',
-      'Date Registered', 'Payment Status'
+      'Student Name', 'Email', 'Program(s)', 'Last Amount Paid (₦)', 'Sender Name',
+      'Payment Status', 'Date Registered', 'Last Payment Date', 'Next Payment Due Date'
     ];
     const csvRows = [headers.join(',')];
 
     filteredStudentsForPayment.forEach(student => {
       const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s)?.label || s).join('; ');
       const paymentStatusText = student.paymentStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      const lastPaymentDateText = student.lastPaymentDate && isValid(parseISO(student.lastPaymentDate)) ? format(parseISO(student.lastPaymentDate), 'yyyy-MM-dd') : 'N/A';
+      const nextPaymentDueDateText = student.nextPaymentDueDate && isValid(parseISO(student.nextPaymentDueDate)) ? format(parseISO(student.nextPaymentDueDate), 'yyyy-MM-dd') : 'N/A';
       
       const row = [
         `"${student.fullName}"`,
         `"${student.email}"`,
         `"${programs}"`,
-        student.amountDue.toString(),
+        student.amountDue.toLocaleString(),
         `"${student.senderName || 'N/A'}"`,
-        student.registrationDate ? `"${format(student.registrationDate, 'yyyy-MM-dd HH:mm')}"` : 'N/A',
         `"${paymentStatusText}"`,
+        student.registrationDate ? `"${format(student.registrationDate, 'yyyy-MM-dd HH:mm')}"` : 'N/A',
+        `"${lastPaymentDateText}"`,
+        `"${nextPaymentDueDateText}"`,
       ];
       csvRows.push(row.join(','));
     });
@@ -274,7 +299,7 @@ export default function PaymentManagementPage() {
     if (link.download !== undefined) {
       const url = URL.createObjectURL(blob);
       link.setAttribute("href", url);
-      link.setAttribute("download", "student_payments.csv");
+      link.setAttribute("download", "student_payments_renewals.csv");
       link.style.visibility = 'hidden';
       document.body.appendChild(link);
       link.click();
@@ -295,7 +320,7 @@ export default function PaymentManagementPage() {
   if (!isClient) {
     return (
       <div>
-        <PageHeader title="Payment Management" description="Access the student management dashboard." />
+        <PageHeader title="Payment Management" description="Verify payments and record monthly renewals." />
         <div className="container mx-auto py-10 text-center">Loading admin panel...</div>
       </div>
     );
@@ -307,7 +332,7 @@ export default function PaymentManagementPage() {
   
   return (
     <div>
-      <PageHeader title="Payment Management" />
+      <PageHeader title="Payment Management & Renewals" />
       <section className="container mx-auto py-10">
         <div className="flex justify-between items-center mb-6">
           <Link href="/admin" passHref>
@@ -318,8 +343,8 @@ export default function PaymentManagementPage() {
 
         <Card className="shadow-xl">
           <CardHeader>
-            <CardTitle className="text-primary text-xl">Verify Student Payments</CardTitle>
-            <CardDescription>Review submitted sender names and approve or reject payments. You can also add payment details for students who paid via other means.</CardDescription>
+            <CardTitle className="text-primary text-xl">Manage Student Payments</CardTitle>
+            <CardDescription>Review initial payments, record monthly renewals, or add payment details for students.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
@@ -332,7 +357,7 @@ export default function PaymentManagementPage() {
                         </Select>
                     </div>
                     <div>
-                        <Label htmlFor="methodFilter" className="text-sm font-medium">Filter by Payment Method</Label>
+                        <Label htmlFor="methodFilter" className="text-sm font-medium">Filter by Payment Method (Inferred)</Label>
                         <Select value={filterPaymentMethod} onValueChange={setFilterPaymentMethod}>
                             <SelectTrigger id="methodFilter" className="mt-1 w-full"><SelectValue placeholder="Select Method" /></SelectTrigger>
                             <SelectContent>{paymentMethodFiltersData.map(m => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent>
@@ -370,12 +395,12 @@ export default function PaymentManagementPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Student Name</TableHead>
-                      <TableHead>Email</TableHead>
                       <TableHead>Program(s)</TableHead>
-                      <TableHead>Amount Paid (₦)</TableHead>
-                      <TableHead>Date Registered</TableHead>
+                      <TableHead>Last Paid (₦)</TableHead>
+                       <TableHead>Sender Name</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-center">Sender Name</TableHead>
+                      <TableHead>Last Payment</TableHead>
+                      <TableHead>Next Due</TableHead>
                       <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -383,15 +408,8 @@ export default function PaymentManagementPage() {
                     {filteredStudentsForPayment.map(student => (
                       <TableRow key={student.id}>
                         <TableCell>{student.fullName}</TableCell>
-                        <TableCell>{student.email}</TableCell>
                         <TableCell>{student.selectedSubjects.map(s => programFiltersData.find(p => p.id ===s)?.label || s).join(', ')}</TableCell>
                         <TableCell>{student.amountDue > 0 ? student.amountDue.toLocaleString() : "N/A"}</TableCell>
-                        <TableCell>{student.registrationDate ? format(student.registrationDate, 'dd MMM yyyy') : 'N/A'}</TableCell>
-                        <TableCell>
-                          <Badge variant={getPaymentStatusBadgeVariant(student.paymentStatus)} className="capitalize">
-                            {student.paymentStatus.replace(/_/g, ' ')}
-                          </Badge>
-                        </TableCell>
                         <TableCell className="text-center">
                           {student.senderName ? (
                             <span className="text-sm">{student.senderName}</span>
@@ -399,14 +417,21 @@ export default function PaymentManagementPage() {
                             <span className="text-xs text-muted-foreground">No Sender Name</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-center">
+                        <TableCell>
+                          <Badge variant={getPaymentStatusBadgeVariant(student.paymentStatus)} className="capitalize">
+                            {student.paymentStatus.replace(/_/g, ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{student.lastPaymentDate && isValid(parseISO(student.lastPaymentDate)) ? format(parseISO(student.lastPaymentDate), 'dd MMM yyyy') : 'N/A'}</TableCell>
+                        <TableCell>{student.nextPaymentDueDate && isValid(parseISO(student.nextPaymentDueDate)) ? format(parseISO(student.nextPaymentDueDate), 'dd MMM yyyy') : <Badge variant="outline">Not Set</Badge>}</TableCell>
+                        <TableCell className="text-center space-y-1">
                           {student.paymentStatus === 'pending_verification' && (
                             <div className="flex gap-2 justify-center">
                               <Button 
                                 size="sm" 
                                 variant="default" 
                                 className="bg-green-600 hover:bg-green-700" 
-                                onClick={() => updatePaymentStatus(student.id, 'approved')}
+                                onClick={() => handleApprovePayment(student.id)}
                                 disabled={isUpdatingPayment}
                               >
                                 <CheckCircle className="mr-1 h-4 w-4" /> Approve
@@ -414,7 +439,7 @@ export default function PaymentManagementPage() {
                               <Button 
                                 size="sm" 
                                 variant="destructive" 
-                                onClick={() => updatePaymentStatus(student.id, 'rejected')}
+                                onClick={() => handleRejectPayment(student.id)}
                                 disabled={isUpdatingPayment}
                               >
                                 <XCircle className="mr-1 h-4 w-4" /> Reject
@@ -425,14 +450,25 @@ export default function PaymentManagementPage() {
                              <Button 
                                 size="sm" 
                                 variant="outline" 
-                                onClick={() => handleOpenPaymentDialog(student)}
+                                onClick={() => openAddDetailsDialog(student)}
                                 disabled={isUpdatingPayment}
                               >
                                 <Edit3 className="mr-1 h-4 w-4" /> Add Details
                               </Button>
                           )}
-                          {(student.paymentStatus === 'approved' || student.paymentStatus === 'rejected') && (
-                             <span className="text-xs text-muted-foreground">Verified</span>
+                          {student.paymentStatus === 'approved' && (
+                             <Button 
+                                size="sm" 
+                                variant="default" 
+                                onClick={() => openMonthlyRenewalDialog(student)}
+                                disabled={isUpdatingPayment}
+                                className="w-full bg-blue-600 hover:bg-blue-700"
+                              >
+                                <CalendarClock className="mr-1 h-4 w-4" /> Record Monthly
+                              </Button>
+                          )}
+                          {student.paymentStatus === 'rejected' && (
+                             <span className="text-xs text-muted-foreground">Payment Rejected</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -447,6 +483,7 @@ export default function PaymentManagementPage() {
           </CardContent>
         </Card>
 
+        {/* Dialog for Adding/Editing Payment Details */}
         <Dialog open={isPaymentDialogOpem} onOpenChange={(isOpen) => { setIsPaymentDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
             <DialogContent>
                 <DialogHeader>
@@ -487,10 +524,40 @@ export default function PaymentManagementPage() {
                         <Button variant="outline">Cancel</Button>
                     </DialogClose>
                     <Button 
-                        onClick={handleSubmitPaymentDialog} 
+                        onClick={handleSubmitAddDetailsDialog} 
                         disabled={isUpdatingPayment || !dialogAmountPaid || parseFloat(dialogAmountPaid) <=0 || !dialogSenderName.trim()}
                     >
                         {isUpdatingPayment ? "Submitting..." : "Submit for Verification"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        {/* Dialog for Recording Monthly Payment Renewal */}
+        <Dialog open={isMonthlyRenewalDialogOpem} onOpenChange={(isOpen) => { setIsMonthlyRenewalDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Record Monthly Payment for {currentStudentForDialog?.fullName}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                           You are about to record a monthly payment of ₦8000 for this student. This will update their last payment date and next due date.
+                        </AlertDescription>
+                    </Alert>
+                     <p>Current Next Due Date: {currentStudentForDialog?.nextPaymentDueDate && isValid(parseISO(currentStudentForDialog.nextPaymentDueDate)) ? format(parseISO(currentStudentForDialog.nextPaymentDueDate), 'dd MMM yyyy') : 'N/A'}</p>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button 
+                        onClick={handleRecordMonthlyPayment} 
+                        disabled={isUpdatingPayment}
+                        className="bg-green-600 hover:bg-green-700"
+                    >
+                        {isUpdatingPayment ? "Recording..." : "Confirm ₦8000 Payment"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -500,5 +567,3 @@ export default function PaymentManagementPage() {
     </div>
   );
 }
-
-    

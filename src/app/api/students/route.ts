@@ -19,8 +19,10 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: string; // Store as ISO string or Date
   amountDue: number;
-  senderName?: string | null; // Changed from paymentReceiptUrl
+  senderName?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
+  lastPaymentDate?: string | null;
+  nextPaymentDueDate?: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -60,7 +62,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const studentData: Omit<Student, '_id' | 'id'> & { dateOfBirth: string; registrationDate: string; senderName: null } = await request.json();
+    const studentData: Omit<Student, '_id' | 'id' | 'lastPaymentDate' | 'nextPaymentDueDate'> & { dateOfBirth: string; registrationDate: string; senderName: null } = await request.json();
     console.log('[API Students POST] Received student data:', studentData);
 
     if (!studentData.email || !studentData.fullName) {
@@ -85,6 +87,8 @@ export async function POST(request: NextRequest) {
         amountDue: studentData.amountDue || 0, // Ensure amountDue is set, default to 0
         paymentStatus: 'pending_payment', // Initial payment status
         senderName: null, // Initialize senderName
+        lastPaymentDate: null,
+        nextPaymentDueDate: null,
     };
 
 
@@ -93,7 +97,14 @@ export async function POST(request: NextRequest) {
     const insertedIdString = result.insertedId.toString();
     console.log(`[API Students POST] Student registered successfully with ID: ${insertedIdString}`);
 
-    return NextResponse.json({ message: "Student registered successfully", studentId: insertedIdString }, { status: 201 });
+    // Return the newly created student object, matching the structure expected by the frontend
+    const createdStudentForFrontend = {
+        ...newStudentDocument,
+        _id: result.insertedId,
+        id: insertedIdString,
+    };
+
+    return NextResponse.json({ message: "Student registered successfully", student: createdStudentForFrontend }, { status: 201 });
   } catch (e) {
     console.error("[API Students POST] Error registering student:", e); 
     const error = e as Error & { code?: string; address?: string; port?: number }; 
@@ -106,4 +117,3 @@ export async function POST(request: NextRequest) {
     }, { status: 500 });
   }
 }
-
