@@ -15,7 +15,6 @@ const programFilters = [
   { id: "jamb", label: "JAMB" },
   { id: "waec", label: "WAEC/SSCE" },
   { id: "post_utme", label: "Post-UTME" },
-  // { id: "edu_consult", label: "Edu Consult" }, // Removed
 ];
 
 interface Student {

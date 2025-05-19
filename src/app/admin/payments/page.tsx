@@ -13,7 +13,7 @@ import { LogOut, ArrowLeft, CheckCircle, XCircle, Download as DownloadIcon, Edit
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from 'date-fns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -123,13 +123,13 @@ export default function PaymentManagementPage() {
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
   };
 
-  const updatePaymentStatus = async (studentId: string, newStatus: Student['paymentStatus'], amount?: number, senderName?: string) => {
+  const updatePaymentStatus = async (studentId: string, newStatus: Student['paymentStatus'], amount?: number, senderNameText?: string) => {
     if (!isClient) return;
     setIsUpdatingPayment(true);
     try {
       const payload: Partial<Pick<Student, 'paymentStatus' | 'senderName' | 'amountDue'>> = { paymentStatus: newStatus };
       if (amount !== undefined) payload.amountDue = amount;
-      if (senderName !== undefined) payload.senderName = senderName;
+      if (senderNameText !== undefined) payload.senderName = senderNameText;
 
 
       const response = await fetch(`/api/students/${studentId}`, {
@@ -147,13 +147,9 @@ export default function PaymentManagementPage() {
       }
 
       setAllStudents(prevStudents =>
-        prevStudents.map(s => (s.id === studentId ? { ...s, ...result.updatedStudent } : s)) // Use updated student from response
+        prevStudents.map(s => (s.id === studentId ? { ...s, ...result.updatedStudent } : s))
       );
       
-      // Refetch to ensure data consistency if the above local update is not sufficient
-      // await fetchStudents();
-
-
       toast({
         title: "Payment Status Updated",
         description: `Student payment successfully processed.`,

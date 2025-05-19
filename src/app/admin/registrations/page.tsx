@@ -9,12 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogOut, ArrowLeft, ArrowUpDown, XCircle, Download } from "lucide-react"; 
+import { LogOut, ArrowLeft, ArrowUpDown, XCircle, Download, Edit3, AlertTriangle } from "lucide-react"; 
 import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { format } from 'date-fns';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Student {
   id: string; 
@@ -36,7 +38,6 @@ const programFiltersData = [
   { id: "jamb", label: "JAMB" },
   { id: "waec", label: "WAEC/SSCE" },
   { id: "post_utme", label: "Post-UTME" },
-  // { id: "edu_consult", label: "Edu Consult" }, // Removed
 ];
 
 const classTimingFiltersData = [
@@ -68,6 +69,13 @@ export default function RegistrationManagementPage() {
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   const [sortConfig, setSortConfig] = useState<{ key: SortableStudentKeys | null; direction: 'ascending' | 'descending' }>({ key: 'registrationDate', direction: 'descending' });
+
+  const [isPaymentDialogOpem, setIsPaymentDialogOpem] = useState(false);
+  const [currentStudentForDialog, setCurrentStudentForDialog] = useState<Student | null>(null);
+  const [dialogAmountPaid, setDialogAmountPaid] = useState<string>("");
+  const [dialogSenderName, setDialogSenderName] = useState<string>("");
+  const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
+
 
   useEffect(() => {
     setIsClient(true);
@@ -101,7 +109,8 @@ export default function RegistrationManagementPage() {
         paymentStatus: s.paymentStatus || 'pending_payment',
       }));
       setAllStudents(loadedStudentsData);
-    } catch (error: any) {
+    } catch (error: any)
+     {
       console.error("Error loading students from API", error);
       toast({ title: "Error Loading Students", description: error.message || "Could not load student data.", variant: "destructive" });
       setAllStudents([]);
@@ -142,7 +151,7 @@ export default function RegistrationManagementPage() {
     if (sortConfig.key === key) {
       return sortConfig.direction === 'ascending' ? ' ▲' : ' ▼';
     }
-    return '';
+    return <ArrowUpDown className="ml-2 h-3 w-3 opacity-50 inline-block" />;
   };
 
   const filteredAndSortedStudents = useMemo(() => {
@@ -219,7 +228,7 @@ export default function RegistrationManagementPage() {
     const csvRows = [headers.join(',')];
 
     filteredAndSortedStudents.forEach(student => {
-      const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s)?.label || s).join('; ');
+      const programs = student.selectedSubjects.map(s => programFiltersData.find(p => p.id === s && p.id !== "all")?.label || s).join('; ');
       const paymentStatusText = student.paymentStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
       const classTimingText = student.classTiming.charAt(0).toUpperCase() + student.classTiming.slice(1);
       
@@ -253,6 +262,73 @@ export default function RegistrationManagementPage() {
     } else {
       toast({ title: "Download Failed", description: "Your browser does not support this feature.", variant: "destructive" });
     }
+  };
+
+  const handleOpenPaymentDialog = (student: Student) => {
+    setCurrentStudentForDialog(student);
+    setDialogAmountPaid(student.amountDue > 0 ? student.amountDue.toString() : "");
+    setDialogSenderName(student.senderName || "");
+    setIsPaymentDialogOpem(true);
+  };
+
+  const submitPaymentDetailsForStudent = async (studentId: string, amount: number, senderNameText: string) => {
+    if (!isClient) return;
+    setIsUpdatingPayment(true);
+    try {
+      const payload = {
+        paymentStatus: 'pending_verification' as const,
+        amountDue: amount,
+        senderName: senderNameText,
+      };
+
+      const response = await fetch(`/api/students/${studentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.details || result.error || `Failed to update payment details: ${response.statusText}`);
+      }
+
+      setAllStudents(prevStudents =>
+        prevStudents.map(s => (s.id === studentId ? { ...s, ...result.updatedStudent } : s))
+      );
+      
+      toast({
+        title: "Payment Details Submitted",
+        description: `Student payment information successfully submitted for verification.`,
+      });
+      setIsPaymentDialogOpem(false); // Close dialog
+      setCurrentStudentForDialog(null); // Reset student in dialog
+      setDialogAmountPaid(""); // Reset dialog field
+      setDialogSenderName(""); // Reset dialog field
+
+    } catch (error: any) {
+      console.error("Error updating payment details:", error);
+      toast({
+        title: "Update Failed",
+        description: error.message || "Could not update payment details.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingPayment(false);
+    }
+  };
+
+  const handleSubmitPaymentDialog = () => {
+    if (!currentStudentForDialog) return;
+    const amount = parseFloat(dialogAmountPaid);
+    if (isNaN(amount) || amount <= 0) {
+      toast({ title: "Invalid Amount", description: "Please enter a valid amount paid.", variant: "destructive" });
+      return;
+    }
+    if (!dialogSenderName.trim()) {
+      toast({ title: "Sender Name Required", description: "Please enter the sender's name.", variant: "destructive" });
+      return;
+    }
+    submitPaymentDetailsForStudent(currentStudentForDialog.id, amount, dialogSenderName.trim());
   };
 
 
@@ -294,7 +370,7 @@ export default function RegistrationManagementPage() {
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="text-primary text-xl">Student Roster</CardTitle>
-            <CardDescription>View, filter, and sort registered students.</CardDescription>
+            <CardDescription>View, filter, and sort registered students. You can also add payment details for students who paid via other means.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
@@ -366,6 +442,7 @@ export default function RegistrationManagementPage() {
                           {col.label}{getSortIndicator(col.key)}
                         </TableHead>
                       ))}
+                       <TableHead className="text-center">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -375,7 +452,7 @@ export default function RegistrationManagementPage() {
                         <TableCell>{student.email}</TableCell>
                         <TableCell>{student.phone}</TableCell>
                         <TableCell>{student.dateOfBirth ? format(student.dateOfBirth, 'dd MMM yyyy') : 'N/A'}</TableCell>
-                        <TableCell>{student.selectedSubjects.map(s => programFiltersData.find(p => p.id ===s)?.label || s).join(', ')}</TableCell>
+                        <TableCell>{student.selectedSubjects.map(s => programFiltersData.find(p => p.id ===s && p.id !== "all")?.label || s).join(', ')}</TableCell>
                         <TableCell className="capitalize">{student.classTiming}</TableCell>
                         <TableCell>{student.amountDue.toLocaleString()}</TableCell>
                         <TableCell>
@@ -384,6 +461,21 @@ export default function RegistrationManagementPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>{student.registrationDate ? format(student.registrationDate, 'dd MMM yyyy, hh:mm a') : 'N/A'}</TableCell>
+                        <TableCell className="text-center">
+                          {student.paymentStatus === 'pending_payment' && (
+                             <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => handleOpenPaymentDialog(student)}
+                                disabled={isUpdatingPayment}
+                              >
+                                <Edit3 className="mr-1 h-4 w-4" /> Add Details
+                              </Button>
+                          )}
+                          {(student.paymentStatus === 'approved' || student.paymentStatus === 'rejected' || student.paymentStatus === 'pending_verification') && (
+                             <span className="text-xs text-muted-foreground">No actions</span>
+                          )}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -395,6 +487,56 @@ export default function RegistrationManagementPage() {
             </p>
           </CardContent>
         </Card>
+
+        <Dialog open={isPaymentDialogOpem} onOpenChange={(isOpen) => { setIsPaymentDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Update Payment Details for {currentStudentForDialog?.fullName}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                    <Alert variant="default">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                           You are about to submit payment information for this student. This will move them to 'Pending Verification'.
+                        </AlertDescription>
+                    </Alert>
+                    <div>
+                        <Label htmlFor="dialogAmountPaidReg">Amount Paid (₦)</Label>
+                        <Input 
+                            id="dialogAmountPaidReg" 
+                            type="number" 
+                            value={dialogAmountPaid}
+                            onChange={(e) => setDialogAmountPaid(e.target.value)}
+                            placeholder="e.g. 8000"
+                            className="mt-1"
+                        />
+                    </div>
+                    <div>
+                        <Label htmlFor="dialogSenderNameReg">Sender Name</Label>
+                        <Input 
+                            id="dialogSenderNameReg" 
+                            type="text" 
+                            value={dialogSenderName}
+                            onChange={(e) => setDialogSenderName(e.target.value)}
+                            placeholder="e.g. Cash Payment, Bank Transfer by John Doe"
+                            className="mt-1"
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild>
+                        <Button variant="outline">Cancel</Button>
+                    </DialogClose>
+                    <Button 
+                        onClick={handleSubmitPaymentDialog} 
+                        disabled={isUpdatingPayment || !dialogAmountPaid || parseFloat(dialogAmountPaid) <=0 || !dialogSenderName.trim()}
+                    >
+                        {isUpdatingPayment ? "Submitting..." : "Submit for Verification"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
       </section>
     </div>
   );
