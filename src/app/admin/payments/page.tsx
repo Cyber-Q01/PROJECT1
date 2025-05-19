@@ -37,7 +37,12 @@ const programFiltersData = [
   { id: "jamb", label: "JAMB" },
   { id: "waec", label: "WAEC/SSCE" },
   { id: "post_utme", label: "Post-UTME" },
-  // { id: "edu_consult", label: "Edu Consult" }, // Removed
+];
+
+const paymentMethodFiltersData = [
+    { id: "all", label: "All Methods" },
+    { id: "cash", label: "Cash Payments" },
+    { id: "transfer", label: "Bank Transfers" },
 ];
 
 
@@ -50,6 +55,7 @@ export default function PaymentManagementPage() {
   const [isUpdatingPayment, setIsUpdatingPayment] = useState(false);
   
   const [filterPaymentStatus, setFilterPaymentStatus] = useState<string>("all");
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   const [isPaymentDialogOpem, setIsPaymentDialogOpem] = useState(false);
@@ -141,15 +147,18 @@ export default function PaymentManagementPage() {
       }
 
       setAllStudents(prevStudents =>
-        prevStudents.map(s => (s.id === studentId ? { ...s, ...payload } : s))
+        prevStudents.map(s => (s.id === studentId ? { ...s, ...result.updatedStudent } : s)) // Use updated student from response
       );
+      
+      // Refetch to ensure data consistency if the above local update is not sufficient
+      // await fetchStudents();
+
 
       toast({
         title: "Payment Status Updated",
         description: `Student payment successfully processed.`,
       });
       
-      // Close dialog if it was open for this update
       if(currentStudentForDialog?.id === studentId) {
         setIsPaymentDialogOpem(false);
         setCurrentStudentForDialog(null);
@@ -188,7 +197,6 @@ export default function PaymentManagementPage() {
       toast({ title: "Sender Name Required", description: "Please enter the sender's name.", variant: "destructive" });
       return;
     }
-    // Call updatePaymentStatus to submit for verification
     updatePaymentStatus(currentStudentForDialog.id, 'pending_verification', amount, dialogSenderName.trim());
   };
 
@@ -204,14 +212,27 @@ export default function PaymentManagementPage() {
   const filteredStudentsForPayment = useMemo(() => {
     return allStudents.filter(student => {
       const matchesStatus = filterPaymentStatus === "all" || student.paymentStatus === filterPaymentStatus;
+      
+      const matchesPaymentMethod = () => {
+        if (filterPaymentMethod === "all") return true;
+        const sender = (student.senderName || "").toLowerCase();
+        if (filterPaymentMethod === "cash") {
+          return sender.includes("cash") || sender.includes("pos") || sender.includes("counter");
+        }
+        if (filterPaymentMethod === "transfer") {
+          return sender !== "" && !(sender.includes("cash") || sender.includes("pos") || sender.includes("counter"));
+        }
+        return true;
+      };
+
       const matchesSearchTerm = searchTerm === "" || 
         student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.phone.includes(searchTerm);
       
-      return matchesStatus && matchesSearchTerm;
+      return matchesStatus && matchesSearchTerm && matchesPaymentMethod();
     }).sort((a,b) => new Date(b.registrationDate).getTime() - new Date(a.registrationDate).getTime());
-  }, [allStudents, filterPaymentStatus, searchTerm]);
+  }, [allStudents, filterPaymentStatus, filterPaymentMethod, searchTerm]);
 
   const getPaymentStatusBadgeVariant = (status: Student['paymentStatus']) => {
     switch (status) {
@@ -269,6 +290,11 @@ export default function PaymentManagementPage() {
     }
   };
 
+  const resetFilters = () => {
+    setFilterPaymentStatus("all");
+    setFilterPaymentMethod("all");
+    setSearchTerm("");
+  };
 
   if (!isClient) {
     return (
@@ -301,12 +327,19 @@ export default function PaymentManagementPage() {
           </CardHeader>
           <CardContent>
             <div className="mb-6 p-4 border rounded-lg bg-muted/50">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                     <div>
                         <Label htmlFor="statusFilter" className="text-sm font-medium">Filter by Payment Status</Label>
                         <Select value={filterPaymentStatus} onValueChange={setFilterPaymentStatus}>
                             <SelectTrigger id="statusFilter" className="mt-1 w-full"><SelectValue placeholder="Select Status" /></SelectTrigger>
                             <SelectContent>{paymentStatusFilters.map(s => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </div>
+                    <div>
+                        <Label htmlFor="methodFilter" className="text-sm font-medium">Filter by Payment Method</Label>
+                        <Select value={filterPaymentMethod} onValueChange={setFilterPaymentMethod}>
+                            <SelectTrigger id="methodFilter" className="mt-1 w-full"><SelectValue placeholder="Select Method" /></SelectTrigger>
+                            <SelectContent>{paymentMethodFiltersData.map(m => <SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>)}</SelectContent>
                         </Select>
                     </div>
                     <div>
@@ -320,11 +353,11 @@ export default function PaymentManagementPage() {
                             className="mt-1 w-full"
                         />
                     </div>
-                     <div className="col-span-full flex justify-between items-center mt-2">
+                     <div className="md:col-span-3 flex justify-between items-center mt-2">
                        <Button variant="outline" onClick={handleDownloadCSVPayments} className="text-sm">
                          <DownloadIcon className="mr-2 h-4 w-4" /> Download CSV
                        </Button>
-                       <Button variant="ghost" onClick={() => {setFilterPaymentStatus("all"); setSearchTerm("");}} className="text-sm">
+                       <Button variant="ghost" onClick={resetFilters} className="text-sm">
                         <XCircle className="mr-2 h-4 w-4" /> Reset Filters
                       </Button>
                     </div>
@@ -418,7 +451,7 @@ export default function PaymentManagementPage() {
           </CardContent>
         </Card>
 
-        <Dialog open={isPaymentDialogOpem} onOpenChange={setIsPaymentDialogOpem}>
+        <Dialog open={isPaymentDialogOpem} onOpenChange={(isOpen) => { setIsPaymentDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>Update Payment Details for {currentStudentForDialog?.fullName}</DialogTitle>
@@ -455,7 +488,7 @@ export default function PaymentManagementPage() {
                 </div>
                 <DialogFooter>
                     <DialogClose asChild>
-                        <Button variant="outline" onClick={() => setCurrentStudentForDialog(null)}>Cancel</Button>
+                        <Button variant="outline">Cancel</Button>
                     </DialogClose>
                     <Button 
                         onClick={handleSubmitPaymentDialog} 

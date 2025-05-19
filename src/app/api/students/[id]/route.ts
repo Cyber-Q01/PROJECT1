@@ -17,7 +17,7 @@ interface Student {
   classTiming: 'morning' | 'afternoon';
   registrationDate: string;
   amountDue: number;
-  senderName?: string | null; // Changed from paymentReceiptUrl
+  senderName?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
 
@@ -27,10 +27,9 @@ export async function PATCH(
 ) {
   try {
     const studentId = params.id;
-    // Ensure you're only extracting fields you intend to update from the body
     const { paymentStatus, senderName, amountDue } = await request.json();
 
-    console.log(`[API Students PATCH /${studentId}] Received update request. New status: ${paymentStatus}, Sender: ${senderName}, Amount: ${amountDue}`);
+    console.log(`[API Students PATCH /${studentId}] Received update request. Status: ${paymentStatus}, Sender: ${senderName}, Amount: ${amountDue}`);
 
     if (!ObjectId.isValid(studentId)) {
       console.error(`[API Students PATCH /${studentId}] Invalid student ID format.`);
@@ -47,9 +46,7 @@ export async function PATCH(
       updateFields.paymentStatus = paymentStatus as Student['paymentStatus'];
     }
     
-    // Allow updating senderName and amountDue if provided, typically when marking as 'pending_verification' by student,
-    // or by admin if they need to correct it.
-    if (senderName !== undefined) { // Check for undefined to allow setting to null or empty string
+    if (senderName !== undefined) { 
         updateFields.senderName = senderName;
     }
     if (amountDue !== undefined && typeof amountDue === 'number') {
@@ -61,7 +58,6 @@ export async function PATCH(
         return NextResponse.json({ error: 'No valid fields provided for update.' }, { status: 400 });
     }
 
-
     console.log(`[API Students PATCH /${studentId}] Attempting to connect to DB...`);
     const client = await clientPromise;
     console.log(`[API Students PATCH /${studentId}] Successfully connected to DB client.`);
@@ -69,23 +65,23 @@ export async function PATCH(
     const studentsCollection = db.collection<Student>("students");
 
     console.log(`[API Students PATCH /${studentId}] Attempting to update student with fields:`, updateFields);
-    const result = await studentsCollection.updateOne(
+    const result = await studentsCollection.findOneAndUpdate(
       { _id: new ObjectId(studentId) },
-      { $set: updateFields }
+      { $set: updateFields },
+      { returnDocument: 'after' } // Important: returns the updated document
     );
 
-    if (result.matchedCount === 0) {
+    if (!result) { // findOneAndUpdate returns null if no document matched
       console.warn(`[API Students PATCH /${studentId}] Student not found for update.`);
       return NextResponse.json({ error: 'Student not found' }, { status: 404 });
     }
     
-    if (result.modifiedCount === 0 && result.matchedCount > 0) {
-        console.warn(`[API Students PATCH /${studentId}] Student found, but no fields were modified (possibly same values).`);
-        return NextResponse.json({ message: `Student found, but no new changes applied.`, studentId }, { status: 200 });
-    }
-    
-    console.log(`[API Students PATCH /${studentId}] Student record updated successfully.`);
-    return NextResponse.json({ message: 'Student record updated successfully', studentId }, { status: 200 });
+    // The document in `result` is the updated student document
+    const updatedStudent = { ...result, id: result._id.toString() };
+    delete updatedStudent._id; // Remove _id if you only want id string
+
+    console.log(`[API Students PATCH /${studentId}] Student record updated successfully. New data:`, updatedStudent);
+    return NextResponse.json({ message: 'Student record updated successfully', studentId, updatedStudent }, { status: 200 });
 
   } catch (e) {
     console.error(`[API Students PATCH /${params.id}] Error updating student record:`, e);
@@ -98,3 +94,4 @@ export async function PATCH(
   }
 }
 
+    
