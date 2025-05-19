@@ -18,7 +18,7 @@ interface Student {
   selectedSubjects: string[];
   classTiming: 'morning' | 'afternoon';
   registrationDate: string; // Store as ISO string or Date
-  amountDue: number; 
+  amountDue: number;
   paymentReceiptUrl?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
 }
@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
   } catch (e) {
     console.error("Error fetching students:", e);
     const error = e as Error;
-    return NextResponse.json({ error: 'Failed to fetch students', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch students', details: error.message || 'Unknown error' }, { status: 500 });
   }
 }
 
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Check for existing email before inserting (example)
+    // Check for existing email before inserting
     const existingStudent = await db.collection<Student>("students").findOne({ email: studentData.email });
     if (existingStudent) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 409 }); // 409 Conflict
@@ -61,10 +61,16 @@ export async function POST(request: NextRequest) {
 
     const result = await db.collection<Student>("students").insertOne(studentData as Student);
 
-    return NextResponse.json({ message: "Student registered successfully", studentId: result.insertedId }, { status: 201 });
+    // Important: The MongoDB driver's insertOne result.insertedId is an ObjectId.
+    // We need to convert it to a string to send back in the JSON response
+    // and for consistent usage if 'id' is expected as a string elsewhere.
+    const insertedIdString = result.insertedId.toString();
+
+    return NextResponse.json({ message: "Student registered successfully", studentId: insertedIdString }, { status: 201 });
   } catch (e) {
     console.error("Error registering student:", e);
     const error = e as Error;
-    return NextResponse.json({ error: 'Failed to register student', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to register student', details: error.message || 'Unknown server error' }, { status: 500 });
   }
 }
+
