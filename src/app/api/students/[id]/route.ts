@@ -1,4 +1,3 @@
-
 // src/app/api/students/[id]/route.ts
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
@@ -13,15 +12,15 @@ interface Student {
   email: string;
   phone: string;
   address: string;
-  dateOfBirth: string; // ISO string
+  dateOfBirth: string; 
   selectedSubjects: string[];
   classTiming: 'morning' | 'afternoon';
-  registrationDate: string; // ISO string
+  registrationDate: string; 
   amountDue: number;
   senderName?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
-  lastPaymentDate?: string | null; // ISO string
-  nextPaymentDueDate?: string | null; // ISO string
+  lastPaymentDate?: string | null; 
+  nextPaymentDueDate?: string | null; 
 }
 
 export async function PATCH(
@@ -68,12 +67,11 @@ export async function PATCH(
     const db = client.db("firstClassTutorials");
     const studentsCollection = db.collection<Student>("students");
 
-    console.log(`[API Students PATCH /${idFromParams}] Attempting to find student with query: `, { _id: mongoObjectIdFromParams });
-    
+    // Retry mechanism for findOne
     let existingStudent: Student | null = null;
     let findAttempt = 0;
-    const MAX_FIND_ATTEMPTS = 3;
-    const FIND_RETRY_DELAY_MS = 250; // Increased delay slightly
+    const MAX_FIND_ATTEMPTS = 3; // Increased from 1
+    const FIND_RETRY_DELAY_MS = 300; // Increased delay
 
     while (findAttempt < MAX_FIND_ATTEMPTS && !existingStudent) {
       findAttempt++;
@@ -124,17 +122,18 @@ export async function PATCH(
     if (isMonthlyRenewal === true && existingStudent.paymentStatus === 'approved') {
         updateFields.paymentStatus = 'approved'; 
         updateFields.lastPaymentDate = formatISO(currentDate);
+        // Base renewal on existing nextPaymentDueDate if it's in the future, otherwise current date
         const baseDateForRenewal = existingStudent.nextPaymentDueDate && new Date(existingStudent.nextPaymentDueDate) > currentDate
                                     ? new Date(existingStudent.nextPaymentDueDate)
                                     : currentDate;
         updateFields.nextPaymentDueDate = formatISO(addMonths(baseDateForRenewal, 1));
-        // Retain existing amountDue if isMonthlyRenewal is true, unless explicitly provided for other reasons
-        if (amountDue === undefined && existingStudent.amountDue) {
+        // Do NOT change amountDue or senderName for monthly renewal unless explicitly provided (which it shouldn't be for this flow)
+        if (amountDue === undefined && existingStudent.amountDue) { // Keep existing amountDue
             updateFields.amountDue = existingStudent.amountDue;
         }
 
-
     } else if (paymentStatus === 'approved' && !isMonthlyRenewal) { 
+        // This handles initial payment approval
         updateFields.lastPaymentDate = formatISO(currentDate);
         updateFields.nextPaymentDueDate = formatISO(addMonths(currentDate, 1));
     }
@@ -149,8 +148,8 @@ export async function PATCH(
 
     let updateAttempt = 0;
     let updateResult: any = null; 
-    const MAX_UPDATE_ATTEMPTS = 1; // We already retried findOne, findOneAndUpdate should be more robust now or fail.
-    const UPDATE_RETRY_DELAY_MS = 200; 
+    const MAX_UPDATE_ATTEMPTS = MAX_FIND_ATTEMPTS; // Align with findOne attempts
+    const UPDATE_RETRY_DELAY_MS = FIND_RETRY_DELAY_MS; 
 
     while (updateAttempt < MAX_UPDATE_ATTEMPTS) {
       updateAttempt++;
@@ -185,13 +184,13 @@ export async function PATCH(
     const updatedStudentDoc = updateResult.value;
     const updatedStudentResponse = {
       ...updatedStudentDoc,
-      id: updatedStudentDoc._id.toString(),
-      dateOfBirth: updatedStudentDoc.dateOfBirth,
-      registrationDate: updatedStudentDoc.registrationDate,
-      lastPaymentDate: updatedStudentDoc.lastPaymentDate,
-      nextPaymentDueDate: updatedStudentDoc.nextPaymentDueDate,
+      id: updatedStudentDoc._id.toString(), // Ensure id is string
+      dateOfBirth: updatedStudentDoc.dateOfBirth, // Keep as ISO string
+      registrationDate: updatedStudentDoc.registrationDate, // Keep as ISO string
+      lastPaymentDate: updatedStudentDoc.lastPaymentDate, // Keep as ISO string or null
+      nextPaymentDueDate: updatedStudentDoc.nextPaymentDueDate, // Keep as ISO string or null
     };
-    delete (updatedStudentResponse as Partial<Student>)._id;
+    delete (updatedStudentResponse as Partial<Student>)._id; // Remove _id if id is present
 
     console.log(`[API Students PATCH /${idFromParams}] Student record updated successfully.`);
     return NextResponse.json({ message: 'Student record updated successfully', studentId: idFromParams, updatedStudent: updatedStudentResponse }, { status: 200 });
@@ -208,4 +207,3 @@ export async function PATCH(
     }, { status: 500 });
   }
 }
-
