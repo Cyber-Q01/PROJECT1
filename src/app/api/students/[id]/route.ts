@@ -30,16 +30,25 @@ export async function PATCH(
 ) {
   try {
     const studentId = params.id;
-    const { paymentStatus, senderName, amountDue, isMonthlyRenewal } = await request.json();
+    const body = await request.json();
+    const { paymentStatus, senderName, amountDue, isMonthlyRenewal } = body;
 
-    console.log(`[API Students PATCH /${studentId}] Received update request. Status: ${paymentStatus}, Sender: ${senderName}, Amount: ${amountDue}, MonthlyRenewal: ${isMonthlyRenewal}`);
+    console.log(`[API Students PATCH /${studentId}] Received update request. Body:`, body);
 
     if (!ObjectId.isValid(studentId)) {
       console.error(`[API Students PATCH /${studentId}] Invalid student ID format.`);
-      return NextResponse.json({ error: 'Invalid student ID format', details: `The provided ID '${studentId}' is not a valid MongoDB ObjectId.` }, { status: 400 });
+      return NextResponse.json({ 
+        error: 'Invalid student ID format', 
+        details: `The provided ID '${studentId}' is not a valid MongoDB ObjectId.`,
+        receivedId: studentId 
+      }, { status: 400 });
     }
 
-    const updateFields: Partial<Student> = {};
+    const mongoObjectId = new ObjectId(studentId);
+    // console.log(`[API Students PATCH /${studentId}] Original string ID: '${studentId}', Converted ObjectId: '${mongoObjectId.toHexString()}'`);
+
+    const updateFields: Partial<Omit<Student, '_id' | 'id'>> = {};
+
 
     if (paymentStatus) {
       if (!['pending_payment', 'pending_verification', 'approved', 'rejected'].includes(paymentStatus)) {
@@ -49,27 +58,23 @@ export async function PATCH(
       updateFields.paymentStatus = paymentStatus as Student['paymentStatus'];
     }
     
-    // Only update senderName if it's explicitly provided in the payload
     if (senderName !== undefined) { 
         updateFields.senderName = senderName;
     }
-    // Only update amountDue if it's explicitly provided in the payload
     if (amountDue !== undefined && typeof amountDue === 'number') {
         updateFields.amountDue = amountDue;
     }
 
     const currentDate = new Date();
 
-    if (isMonthlyRenewal === true) { // Admin recording a monthly renewal
-        updateFields.paymentStatus = 'approved'; // Ensure status is approved for renewal
+    if (isMonthlyRenewal === true) { 
+        updateFields.paymentStatus = 'approved'; 
         updateFields.lastPaymentDate = formatISO(currentDate);
         updateFields.nextPaymentDueDate = formatISO(addMonths(currentDate, 1));
         // DO NOT automatically update amountDue or senderName for a simple renewal
-        // These are updated only if explicitly passed for an initial payment or manual update
-    } else if (paymentStatus === 'approved') { // Initial payment approval (not a renewal)
+    } else if (paymentStatus === 'approved') { 
         updateFields.lastPaymentDate = formatISO(currentDate);
         updateFields.nextPaymentDueDate = formatISO(addMonths(currentDate, 1));
-        // Keep student-submitted/admin-entered amountDue and senderName if this is the approval step
     }
     
     if (Object.keys(updateFields).length === 0) {
@@ -77,35 +82,41 @@ export async function PATCH(
         return NextResponse.json({ error: 'No valid fields provided for update.' }, { status: 400 });
     }
 
-    console.log(`[API Students PATCH /${studentId}] Attempting to connect to DB...`);
+    // console.log(`[API Students PATCH /${studentId}] Attempting to connect to DB...`);
     const client = await clientPromise;
-    console.log(`[API Students PATCH /${studentId}] Successfully connected to DB client.`);
+    // console.log(`[API Students PATCH /${studentId}] Successfully connected to DB client.`);
     const db = client.db("firstClassTutorials");
     const studentsCollection = db.collection<Student>("students");
 
-    console.log(`[API Students PATCH /${studentId}] Attempting to update student with ID '${studentId}' using fields:`, updateFields);
+    // console.log(`[API Students PATCH /${studentId}] Attempting to update student with ID '${studentId}' (ObjectId: ${mongoObjectId.toHexString()}) using fields:`, updateFields);
     const result = await studentsCollection.findOneAndUpdate(
-      { _id: new ObjectId(studentId) },
+      { _id: mongoObjectId },
       { $set: updateFields },
       { returnDocument: 'after' } 
     );
 
     if (!result || !result.value) { 
       console.warn(`[API Students PATCH /${studentId}] Student not found for ID: '${studentId}'. Update operation failed.`);
-      return NextResponse.json({ error: `Student not found with ID: ${studentId}`, details: `No student record matches the ID '${studentId}'.` }, { status: 404 });
+      return NextResponse.json({ 
+        error: `Student not found`, 
+        details: `No student record matches the query for ID (converted from '${studentId}' to ObjectId '${mongoObjectId.toHexString()}').`,
+        searchedObjectId: mongoObjectId.toHexString(),
+        originalIdParam: studentId
+      }, { status: 404 });
     }
     
     const updatedStudentDoc = result.value;
      const updatedStudentResponse = {
       ...updatedStudentDoc,
-      id: updatedStudentDoc._id.toString(), // Ensure id is a string for frontend
-      dateOfBirth: updatedStudentDoc.dateOfBirth, // Keep as is (likely string)
-      registrationDate: updatedStudentDoc.registrationDate, // Keep as is (likely string)
-      lastPaymentDate: updatedStudentDoc.lastPaymentDate, // string or null
-      nextPaymentDueDate: updatedStudentDoc.nextPaymentDueDate, // string or null
+      id: updatedStudentDoc._id.toString(),
+      dateOfBirth: updatedStudentDoc.dateOfBirth, 
+      registrationDate: updatedStudentDoc.registrationDate, 
+      lastPaymentDate: updatedStudentDoc.lastPaymentDate, 
+      nextPaymentDueDate: updatedStudentDoc.nextPaymentDueDate, 
     };
+    delete (updatedStudentResponse as any)._id; // Remove _id to avoid sending it if not needed
     
-    console.log(`[API Students PATCH /${studentId}] Student record updated successfully. New data:`, updatedStudentResponse);
+    console.log(`[API Students PATCH /${studentId}] Student record updated successfully.`);
     return NextResponse.json({ message: 'Student record updated successfully', studentId, updatedStudent: updatedStudentResponse }, { status: 200 });
 
   } catch (e) {
@@ -118,4 +129,3 @@ export async function PATCH(
     }, { status: 500 });
   }
 }
-

@@ -59,22 +59,22 @@ export default function RegisterPage() {
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isClient, setIsClient] = useState(false);
   
-  const [calendarProps, setCalendarProps] = useState<{
-    calendarToYear: number;
-    maxBirthDate: Date;
-    minBirthDate: Date;
+  const [calendarDateConfig, setCalendarDateConfig] = useState<{
+    defaultMonth: Date;
+    fromDate: Date;
+    toDate: Date;
   } | null>(null);
+
 
   useEffect(() => {
     setIsClient(true);
-    // Moved date calculations for calendar here, to ensure they run client-side
     const today = new Date();
     const fiveYearsAgo = subYears(today, 5);
     const minBirthDateInstance = new Date("1950-01-01");
-    setCalendarProps({
-      calendarToYear: fiveYearsAgo.getFullYear(),
-      maxBirthDate: fiveYearsAgo,
-      minBirthDate: minBirthDateInstance,
+    setCalendarDateConfig({
+        defaultMonth: fiveYearsAgo,
+        fromDate: minBirthDateInstance,
+        toDate: fiveYearsAgo,
     });
   }, []);
 
@@ -99,7 +99,7 @@ export default function RegisterPage() {
   const selectedSubjectsWatch = watch("selectedSubjects");
 
   const handleFormSubmit: SubmitHandler<RegistrationFormValues> = async (data) => {
-    if (!isClient) return;
+    if (!isClient || !calendarDateConfig) return;
 
     const studentDataToSubmit = {
       ...data,
@@ -146,11 +146,11 @@ export default function RegisterPage() {
         selectedSubjects: result.student.selectedSubjects,
         classTiming: result.student.classTiming,
         registrationDate: result.student.registrationDate, 
-        amountDue: result.student.amountDue,
-        paymentStatus: result.student.paymentStatus,
-        senderName: result.student.senderName,
-        lastPaymentDate: result.student.lastPaymentDate,
-        nextPaymentDueDate: result.student.nextPaymentDueDate,
+        amountDue: result.student.amountDue || 0,
+        paymentStatus: result.student.paymentStatus || 'pending_payment',
+        senderName: result.student.senderName || null,
+        lastPaymentDate: result.student.lastPaymentDate || null,
+        nextPaymentDueDate: result.student.nextPaymentDueDate || null,
       };
 
       setCurrentRegistrant(newRegistrationDataForState);
@@ -204,7 +204,7 @@ export default function RegisterPage() {
     }
 
     setIsSubmittingProof(true);
-    console.log(`[PaymentProof] Submitting payment proof for student ID: '${currentRegistrant.id}'`); // Log the ID being used
+    console.log(`[PaymentProof] Submitting payment proof for student ID: '${currentRegistrant.id}'`); 
 
     try {
       const payload = {
@@ -219,22 +219,47 @@ export default function RegisterPage() {
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
-      // No console.log for result here, it's logged below if !response.ok
+      const responseText = await response.text(); // Get response as text first
+      let result;
+      try {
+        result = JSON.parse(responseText); // Try to parse as JSON
+      } catch (e) {
+        // If parsing fails, result will be the raw text or a generic error object
+        result = { error: "Server returned a non-JSON response or network error.", details: responseText.substring(0, 250) }; 
+      }
+
 
       if (!response.ok) {
         console.error('[PaymentProof] API Error Response Status:', response.status);
-        console.error('[PaymentProof] API Error Response Body:', result);
+        console.error('[PaymentProof] API Error Response Body (raw text):', responseText);
+        console.error('[PaymentProof] API Error Response Body (parsed/fallback):', result);
+        
+        let errorDescription = "Could not submit payment information.";
+        if (result && result.details) {
+          errorDescription = result.details;
+        } else if (result && result.error) {
+          errorDescription = result.error;
+           if(result.searchedObjectId && result.originalIdParam) { // Check for new detailed fields from API
+             errorDescription += ` (DB query for ID: ${result.searchedObjectId}, from param: ${result.originalIdParam})`;
+           } else if (result.receivedId) {
+             errorDescription += ` (Received invalid ID for processing: ${result.receivedId})`;
+           }
+        } else {
+            // Fallback if result object is not as expected
+            errorDescription = `Server error ${response.status}. Please try again. Details: ${responseText.substring(0,100)}`;
+        }
+        
         toast({
           title: `Payment Submission Failed (Status: ${response.status})`,
-          description: result.details || result.error || "Could not submit payment information. Please check details or contact support.",
+          description: errorDescription,
           variant: "destructive",
         });
         setIsSubmittingProof(false);
         return; 
       }
-
-      // If response.ok, it means status 200, and result.updatedStudent should be there.
+      
+      // On successful PATCH, result should contain { message, studentId, updatedStudent }
+      console.log('[PaymentProof] API Success Response:', result);
       toast({
         title: "Payment Information Submitted!",
         description: `Your payment information (Amount: ₦${paidAmount.toLocaleString()}, Sender: ${senderNameInput}) has been submitted. We will verify it shortly.`,
@@ -245,11 +270,10 @@ export default function RegisterPage() {
       setSenderNameInput("");
       window.scrollTo(0, 0);
     } catch (error: any) {
-      // This catch block is for network errors or if response.json() itself fails
-      console.error("[PaymentProof] Network or JSON parsing error:", error);
+      console.error("[PaymentProof] Network or other client-side error during payment submission:", error);
       toast({
-        title: "Payment Submission Network Error",
-        description: error.message || "A network error occurred. Please try again.",
+        title: "Payment Submission Error",
+        description: error.message || "A client-side error occurred. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -266,7 +290,7 @@ export default function RegisterPage() {
   }
 
 
-  if (!isClient) {
+  if (!isClient || !calendarDateConfig) {
     return (
         <div>
             <PageHeader
@@ -421,27 +445,28 @@ export default function RegisterPage() {
                             "w-full justify-start text-left font-normal mt-1",
                             !field.value && "text-muted-foreground"
                           )}
-                          disabled={!calendarProps} 
+                          disabled={!calendarDateConfig} 
                         >
                           <CalendarIconLucide className="mr-2 h-4 w-4" />
                           {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0">
-                        {calendarProps && ( 
+                        {calendarDateConfig && ( 
                           <Calendar
                             mode="single"
                             selected={field.value ? (isValid(field.value) ? field.value : undefined) : undefined}
                             onSelect={(date) => field.onChange(date)}
-                            initialFocus
+                            defaultMonth={calendarDateConfig.defaultMonth}
+                            fromDate={calendarDateConfig.fromDate}
+                            toDate={calendarDateConfig.toDate}
                             captionLayout="dropdown-buttons"
-                            fromYear={calendarProps.minBirthDate.getFullYear()}
-                            toYear={calendarProps.calendarToYear}
-                            fromDate={calendarProps.minBirthDate}
-                            toDate={calendarProps.maxBirthDate}
+                            fromYear={calendarDateConfig.fromDate.getFullYear()}
+                            toYear={calendarDateConfig.toDate.getFullYear()}
                             disabled={(date) =>
-                               date > calendarProps.maxBirthDate || date < calendarProps.minBirthDate
+                               date > calendarDateConfig.toDate || date < calendarDateConfig.fromDate
                             }
+                            initialFocus
                           />
                         )}
                       </PopoverContent>
@@ -495,7 +520,7 @@ export default function RegisterPage() {
                 {errors.classTiming && <p className="text-sm text-destructive mt-1">{errors.classTiming.message}</p>}
               </div>
 
-              <Button type="submit" disabled={isSubmittingForm || !calendarProps} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
+              <Button type="submit" disabled={isSubmittingForm || !calendarDateConfig} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground">
                 {isSubmittingForm ? "Submitting..." : "Proceed to Payment"}
               </Button>
             </form>
@@ -505,4 +530,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-
