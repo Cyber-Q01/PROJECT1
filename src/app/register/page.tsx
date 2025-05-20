@@ -17,7 +17,7 @@ import { CheckCircle2, Banknote, Calendar as CalendarIconLucide, User } from "lu
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format, subYears, formatISO } from "date-fns";
+import { format, subYears, formatISO, parseISO, isValid } from "date-fns";
 import { cn } from "@/lib/utils";
 
 const subjectsOffered = [
@@ -40,13 +40,13 @@ type RegistrationFormValues = z.infer<typeof registrationSchema>;
 
 interface StoredStudentData extends Omit<RegistrationFormValues, 'dateOfBirth'> {
   id: string;
-  dateOfBirth: string; // ISO string
-  registrationDate: string; // ISO string
+  dateOfBirth: string; 
+  registrationDate: string; 
   amountDue: number;
   senderName?: string | null;
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
-  lastPaymentDate?: string | null; // ISO string
-  nextPaymentDueDate?: string | null; // ISO string
+  lastPaymentDate?: string | null; 
+  nextPaymentDueDate?: string | null; 
 }
 
 
@@ -67,12 +67,13 @@ export default function RegisterPage() {
 
   useEffect(() => {
     setIsClient(true);
+    // Moved date calculations for calendar here, to ensure they run client-side
     const today = new Date();
     const fiveYearsAgo = subYears(today, 5);
-    const minBirthDateInstance = new Date("1950-01-01"); // Earliest selectable birth date
+    const minBirthDateInstance = new Date("1950-01-01");
     setCalendarProps({
       calendarToYear: fiveYearsAgo.getFullYear(),
-      maxBirthDate: fiveYearsAgo, // Latest selectable birth date (e.g., at least 5 years old)
+      maxBirthDate: fiveYearsAgo,
       minBirthDate: minBirthDateInstance,
     });
   }, []);
@@ -111,7 +112,7 @@ export default function RegisterPage() {
       nextPaymentDueDate: null,
     };
     
-    const { id: formId, ...apiPayload } = { ...studentDataToSubmit, id: "" }; // id is not needed for POST
+    const { id: formId, ...apiPayload } = { ...studentDataToSubmit, id: "" }; 
 
     try {
       console.log('[Registration] Submitting student data to API:', apiPayload);
@@ -135,24 +136,22 @@ export default function RegisterPage() {
         return;
       }
       
-      // Ensure the student object from API has all necessary fields for StoredStudentData
       const newRegistrationDataForState: StoredStudentData = {
-        id: result.student.id || result.student._id.toString(), // Use id from API
+        id: result.student.id || result.student._id.toString(), 
         fullName: result.student.fullName,
         email: result.student.email,
         phone: result.student.phone,
         address: result.student.address,
-        dateOfBirth: result.student.dateOfBirth, // Should be ISO string from API
+        dateOfBirth: result.student.dateOfBirth, 
         selectedSubjects: result.student.selectedSubjects,
         classTiming: result.student.classTiming,
-        registrationDate: result.student.registrationDate, // Should be ISO string from API
+        registrationDate: result.student.registrationDate, 
         amountDue: result.student.amountDue,
         paymentStatus: result.student.paymentStatus,
         senderName: result.student.senderName,
         lastPaymentDate: result.student.lastPaymentDate,
         nextPaymentDueDate: result.student.nextPaymentDueDate,
       };
-
 
       setCurrentRegistrant(newRegistrationDataForState);
       setRegistrationStep('payment');
@@ -205,6 +204,8 @@ export default function RegisterPage() {
     }
 
     setIsSubmittingProof(true);
+    console.log(`[PaymentProof] Submitting payment proof for student ID: '${currentRegistrant.id}'`); // Log the ID being used
+
     try {
       const payload = {
         amountDue: paidAmount,
@@ -212,8 +213,6 @@ export default function RegisterPage() {
         paymentStatus: 'pending_verification' as const,
       };
       
-      console.log(`[PaymentProof] Submitting payment info for student ID: ${currentRegistrant.id}`, payload);
-
       const response = await fetch(`/api/students/${currentRegistrant.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -221,12 +220,21 @@ export default function RegisterPage() {
       });
 
       const result = await response.json();
-      console.log('[PaymentProof] API Response:', result);
+      // No console.log for result here, it's logged below if !response.ok
 
       if (!response.ok) {
-        throw new Error(result.details || result.error || "Student not found or update failed.");
+        console.error('[PaymentProof] API Error Response Status:', response.status);
+        console.error('[PaymentProof] API Error Response Body:', result);
+        toast({
+          title: `Payment Submission Failed (Status: ${response.status})`,
+          description: result.details || result.error || "Could not submit payment information. Please check details or contact support.",
+          variant: "destructive",
+        });
+        setIsSubmittingProof(false);
+        return; 
       }
 
+      // If response.ok, it means status 200, and result.updatedStudent should be there.
       toast({
         title: "Payment Information Submitted!",
         description: `Your payment information (Amount: ₦${paidAmount.toLocaleString()}, Sender: ${senderNameInput}) has been submitted. We will verify it shortly.`,
@@ -237,10 +245,11 @@ export default function RegisterPage() {
       setSenderNameInput("");
       window.scrollTo(0, 0);
     } catch (error: any) {
-      console.error("[PaymentProof] Failed to submit payment proof", error);
+      // This catch block is for network errors or if response.json() itself fails
+      console.error("[PaymentProof] Network or JSON parsing error:", error);
       toast({
-        title: "Payment Submission Failed",
-        description: error.message || "Could not submit your payment information. Please try again or contact support.",
+        title: "Payment Submission Network Error",
+        description: error.message || "A network error occurred. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -422,7 +431,7 @@ export default function RegisterPage() {
                         {calendarProps && ( 
                           <Calendar
                             mode="single"
-                            selected={field.value}
+                            selected={field.value ? (isValid(field.value) ? field.value : undefined) : undefined}
                             onSelect={(date) => field.onChange(date)}
                             initialFocus
                             captionLayout="dropdown-buttons"
@@ -431,7 +440,7 @@ export default function RegisterPage() {
                             fromDate={calendarProps.minBirthDate}
                             toDate={calendarProps.maxBirthDate}
                             disabled={(date) =>
-                              date > calendarProps.maxBirthDate || date < calendarProps.minBirthDate
+                               date > calendarProps.maxBirthDate || date < calendarProps.minBirthDate
                             }
                           />
                         )}
@@ -496,3 +505,4 @@ export default function RegisterPage() {
     </div>
   );
 }
+
