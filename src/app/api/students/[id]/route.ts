@@ -49,24 +49,27 @@ export async function PATCH(
       updateFields.paymentStatus = paymentStatus as Student['paymentStatus'];
     }
     
+    // Only update senderName if it's explicitly provided in the payload
     if (senderName !== undefined) { 
         updateFields.senderName = senderName;
     }
+    // Only update amountDue if it's explicitly provided in the payload
     if (amountDue !== undefined && typeof amountDue === 'number') {
         updateFields.amountDue = amountDue;
     }
 
     const currentDate = new Date();
-    if (isMonthlyRenewal && amountDue === 8000) { // Admin recording a monthly payment
-        updateFields.paymentStatus = 'approved';
+
+    if (isMonthlyRenewal === true) { // Admin recording a monthly renewal
+        updateFields.paymentStatus = 'approved'; // Ensure status is approved for renewal
         updateFields.lastPaymentDate = formatISO(currentDate);
         updateFields.nextPaymentDueDate = formatISO(addMonths(currentDate, 1));
-        updateFields.amountDue = 8000; // Confirming the standard monthly amount
-        updateFields.senderName = senderName || "Admin Recorded - Monthly"; // Or some other indicator
-    } else if (paymentStatus === 'approved' && !isMonthlyRenewal) { // Initial payment approval
+        // DO NOT automatically update amountDue or senderName for a simple renewal
+        // These are updated only if explicitly passed for an initial payment or manual update
+    } else if (paymentStatus === 'approved') { // Initial payment approval (not a renewal)
         updateFields.lastPaymentDate = formatISO(currentDate);
         updateFields.nextPaymentDueDate = formatISO(addMonths(currentDate, 1));
-        // Keep student-submitted amountDue and senderName for the first payment
+        // Keep student-submitted/admin-entered amountDue and senderName if this is the approval step
     }
     
     if (Object.keys(updateFields).length === 0) {
@@ -95,7 +98,11 @@ export async function PATCH(
     const updatedStudentDoc = result.value;
      const updatedStudentResponse = {
       ...updatedStudentDoc,
-      id: updatedStudentDoc._id.toString(),
+      id: updatedStudentDoc._id.toString(), // Ensure id is a string for frontend
+      dateOfBirth: updatedStudentDoc.dateOfBirth, // Keep as is (likely string)
+      registrationDate: updatedStudentDoc.registrationDate, // Keep as is (likely string)
+      lastPaymentDate: updatedStudentDoc.lastPaymentDate, // string or null
+      nextPaymentDueDate: updatedStudentDoc.nextPaymentDueDate, // string or null
     };
     
     console.log(`[API Students PATCH /${studentId}] Student record updated successfully. New data:`, updatedStudentResponse);
@@ -111,3 +118,4 @@ export async function PATCH(
     }, { status: 500 });
   }
 }
+

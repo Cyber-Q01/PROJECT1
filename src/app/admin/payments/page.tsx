@@ -24,15 +24,15 @@ interface Student {
   email: string;
   phone: string;
   address: string;
-  dateOfBirth: Date; // Changed to Date
+  dateOfBirth: Date; 
   selectedSubjects: string[];
   classTiming: 'morning' | 'afternoon';
-  registrationDate: Date; // Changed to Date
+  registrationDate: Date; 
   amountDue: number;
   senderName?: string | null; 
   paymentStatus: 'pending_payment' | 'pending_verification' | 'approved' | 'rejected';
-  lastPaymentDate?: string | null; // ISO string
-  nextPaymentDueDate?: string | null; // ISO string
+  lastPaymentDate?: string | null; 
+  nextPaymentDueDate?: string | null; 
 }
 
 const programFiltersData = [
@@ -91,10 +91,10 @@ export default function PaymentManagementPage() {
         email: s.email || 'N/A',
         phone: s.phone || 'N/A',
         address: s.address || 'N/A',
-        dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
+        dateOfBirth: s.dateOfBirth ? parseISO(s.dateOfBirth) : new Date(0),
         selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
         classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
-        registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
+        registrationDate: s.registrationDate ? parseISO(s.registrationDate) : new Date(0),
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
         senderName: s.senderName || null, 
         paymentStatus: s.paymentStatus || 'pending_payment',
@@ -130,7 +130,7 @@ export default function PaymentManagementPage() {
   };
 
   const updatePaymentGeneric = async (studentId: string, payload: any, successTitle: string, successDescription: string) => {
-    if (!isClient) return;
+    if (!isClient) return false;
     setIsUpdatingPayment(true);
     try {
       const response = await fetch(`/api/students/${studentId}`, {
@@ -203,9 +203,9 @@ export default function PaymentManagementPage() {
     if (!currentStudentForDialog) return;
     const success = await updatePaymentGeneric(
       currentStudentForDialog.id,
-      { isMonthlyRenewal: true, amountDue: 8000 },
-      "Monthly Payment Recorded",
-      `₦8000 payment recorded for ${currentStudentForDialog.fullName}.`
+      { isMonthlyRenewal: true }, // API will not change amountDue for isMonthlyRenewal: true
+      "Monthly Renewal Recorded",
+      `Payment period updated for ${currentStudentForDialog.fullName}.`
     );
     if (success) {
       setIsMonthlyRenewalDialogOpem(false);
@@ -483,7 +483,6 @@ export default function PaymentManagementPage() {
           </CardContent>
         </Card>
 
-        {/* Dialog for Adding/Editing Payment Details */}
         <Dialog open={isPaymentDialogOpem} onOpenChange={(isOpen) => { setIsPaymentDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
             <DialogContent>
                 <DialogHeader>
@@ -533,20 +532,20 @@ export default function PaymentManagementPage() {
             </DialogContent>
         </Dialog>
 
-        {/* Dialog for Recording Monthly Payment Renewal */}
         <Dialog open={isMonthlyRenewalDialogOpem} onOpenChange={(isOpen) => { setIsMonthlyRenewalDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Record Monthly Payment for {currentStudentForDialog?.fullName}</DialogTitle>
+                    <DialogTitle>Record Monthly Renewal for {currentStudentForDialog?.fullName}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <Alert>
                         <AlertTriangle className="h-4 w-4" />
                         <AlertDescription>
-                           You are about to record a monthly payment of ₦8000 for this student. This will update their last payment date and next due date.
+                           You are about to record a monthly renewal for this student. This will update their last payment date and next due date based on their existing payment record. The amount paid will not change.
                         </AlertDescription>
                     </Alert>
                      <p>Current Next Due Date: {currentStudentForDialog?.nextPaymentDueDate && isValid(parseISO(currentStudentForDialog.nextPaymentDueDate)) ? format(parseISO(currentStudentForDialog.nextPaymentDueDate), 'dd MMM yyyy') : 'N/A'}</p>
+                     <p>Current Amount Paid: ₦{currentStudentForDialog?.amountDue.toLocaleString()}</p>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild>
@@ -557,7 +556,7 @@ export default function PaymentManagementPage() {
                         disabled={isUpdatingPayment}
                         className="bg-green-600 hover:bg-green-700"
                     >
-                        {isUpdatingPayment ? "Recording..." : "Confirm ₦8000 Payment"}
+                        {isUpdatingPayment ? "Recording..." : "Confirm Renewal"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

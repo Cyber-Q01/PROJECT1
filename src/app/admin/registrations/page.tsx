@@ -66,8 +66,8 @@ export default function RegistrationManagementPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const [filterProgram, setFilterProgram] = useState<string>("all");
-  const [filterClassTiming, setFilterClassTiming] = useState<string>("all"); // Kept for filtering, but column removed
-  const [filterPaymentRange, setFilterPaymentRange] = useState<string>("all"); // Kept for filtering, but column removed
+  const [filterClassTiming, setFilterClassTiming] = useState<string>("all"); 
+  const [filterPaymentRange, setFilterPaymentRange] = useState<string>("all"); 
   const [searchTerm, setSearchTerm] = useState<string>("");
 
   const [sortConfig, setSortConfig] = useState<{ key: SortableStudentKeys | null; direction: 'ascending' | 'descending' }>({ key: 'registrationDate', direction: 'descending' });
@@ -104,10 +104,10 @@ export default function RegistrationManagementPage() {
         email: s.email || 'N/A',
         phone: s.phone || 'N/A',
         address: s.address || 'N/A',
-        dateOfBirth: s.dateOfBirth ? new Date(s.dateOfBirth) : new Date(0),
+        dateOfBirth: s.dateOfBirth ? parseISO(s.dateOfBirth) : new Date(0),
         selectedSubjects: Array.isArray(s.selectedSubjects) ? s.selectedSubjects : [],
         classTiming: s.classTiming === 'morning' || s.classTiming === 'afternoon' ? s.classTiming : 'morning',
-        registrationDate: s.registrationDate ? new Date(s.registrationDate) : new Date(0),
+        registrationDate: s.registrationDate ? parseISO(s.registrationDate) : new Date(0),
         amountDue: typeof s.amountDue === 'number' ? s.amountDue : 0,
         senderName: s.senderName || null, 
         paymentStatus: s.paymentStatus || 'pending_payment',
@@ -194,7 +194,7 @@ export default function RegistrationManagementPage() {
       const matchesSearchTerm = searchTerm === "" || 
         student.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        student.phone.includes(searchTerm); // phone kept for search, but column removed
+        student.phone.includes(searchTerm); 
 
       let matchesPaymentRange = true;
       if (filterPaymentRange === "less_than_4000") {
@@ -290,7 +290,6 @@ export default function RegistrationManagementPage() {
         throw new Error(result.details || result.error || `Failed to update payment details: ${response.statusText}`);
       }
       
-      // Use the returned student to update the state
       setAllStudents(prevStudents =>
         prevStudents.map(s => (s.id === studentId ? { ...s, ...result.updatedStudent } : s))
       );
@@ -341,7 +340,7 @@ export default function RegistrationManagementPage() {
     try {
       const payload = {
         isMonthlyRenewal: true,
-        amountDue: 8000, 
+        // No amountDue sent here, API will preserve existing amountDue
       };
       const response = await fetch(`/api/students/${currentStudentForDialog.id}`, {
         method: 'PATCH',
@@ -350,11 +349,10 @@ export default function RegistrationManagementPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.updatedStudent) {
-        throw new Error(result.details || result.error || `Failed to record monthly payment.`);
+        throw new Error(result.details || result.error || `Failed to record monthly renewal.`);
       }
-      // Use the returned student to update the state
-      setAllStudents(prev => prev.map(s => s.id === currentStudentForDialog.id ? { ...s, ...result.updatedStudent } : s));
-      toast({ title: "Monthly Payment Recorded", description: `₦8000 payment recorded for ${currentStudentForDialog.fullName}.` });
+      setAllStudents(prev => prev.map(s => s.id === currentStudentForDialog!.id ? { ...s, ...result.updatedStudent } : s));
+      toast({ title: "Monthly Renewal Recorded", description: `Payment period updated for ${currentStudentForDialog.fullName}.` });
       setIsMonthlyRenewalDialogOpem(false);
       setCurrentStudentForDialog(null);
     } catch (error: any) {
@@ -506,13 +504,13 @@ export default function RegistrationManagementPage() {
                                 variant="default" 
                                 onClick={() => openMonthlyRenewalDialog(student)}
                                 disabled={isUpdatingPayment}
-                                className="w-full bg-green-600 hover:bg-green-700" // Changed color for distinction
+                                className="w-full bg-green-600 hover:bg-green-700" 
                               >
                                 <CalendarClock className="mr-1 h-4 w-4" /> Record Monthly
                               </Button>
                           )}
                           {(student.paymentStatus === 'rejected' || student.paymentStatus === 'pending_verification') && (
-                             <span className="text-xs text-muted-foreground">No direct actions here. Manage on Payment Page.</span>
+                             <span className="text-xs text-muted-foreground">Manage on Payment Page.</span>
                           )}
                         </TableCell>
                       </TableRow>
@@ -527,7 +525,6 @@ export default function RegistrationManagementPage() {
           </CardContent>
         </Card>
 
-        {/* Dialog for Adding Payment Details (for pending_payment) */}
         <Dialog open={isPaymentDialogOpem} onOpenChange={(isOpen) => { setIsPaymentDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
             <DialogContent>
                 <DialogHeader>
@@ -577,20 +574,20 @@ export default function RegistrationManagementPage() {
             </DialogContent>
         </Dialog>
 
-        {/* Dialog for Recording Monthly Payment Renewal */}
         <Dialog open={isMonthlyRenewalDialogOpem} onOpenChange={(isOpen) => { setIsMonthlyRenewalDialogOpem(isOpen); if (!isOpen) setCurrentStudentForDialog(null); }}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Record Monthly Payment for {currentStudentForDialog?.fullName}</DialogTitle>
+                    <DialogTitle>Record Monthly Renewal for {currentStudentForDialog?.fullName}</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <Alert>
                         <AlertTriangle className="h-4 w-4" />
                         <AlertDescription>
-                           You are about to record a monthly payment of ₦8000 for this student. This will update their last payment date and next due date.
+                           You are about to record a monthly renewal for this student. This will update their last payment date and next due date based on their existing payment record. The amount paid will not change.
                         </AlertDescription>
                     </Alert>
                      <p>Current Next Due Date: {currentStudentForDialog?.nextPaymentDueDate && isValid(parseISO(currentStudentForDialog.nextPaymentDueDate)) ? format(parseISO(currentStudentForDialog.nextPaymentDueDate), 'dd MMM yyyy') : 'N/A'}</p>
+                     <p>Current Amount Paid: ₦{currentStudentForDialog?.amountDue.toLocaleString()}</p>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild>
@@ -601,7 +598,7 @@ export default function RegistrationManagementPage() {
                         disabled={isUpdatingPayment}
                         className="bg-green-600 hover:bg-green-700"
                     >
-                        {isUpdatingPayment ? "Recording..." : "Confirm ₦8000 Payment"}
+                        {isUpdatingPayment ? "Recording..." : "Confirm Renewal"}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -611,6 +608,3 @@ export default function RegistrationManagementPage() {
     </div>
   );
 }
-
-
-    
