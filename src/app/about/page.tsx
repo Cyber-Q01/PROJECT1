@@ -7,8 +7,8 @@ import { Lightbulb, Gem, Users, BookOpen } from "lucide-react";
 
 const tutors = [
   {
-    name: "Dr. Amina Yusuf",
-    subject: "Mathematics & Physics",
+    name: "Dr. Salawu Ajisola",
+    subject: "English, Economics and Goverment",
     bio: "PhD in Applied Mathematics with 10+ years of teaching experience. Passionate about making complex concepts simple.",
     avatar: "https://placehold.co/150x150.png",
     dataAiHint: "teacher portrait"
